@@ -1,5 +1,18 @@
+import { ApiProperty } from '@nestjs/swagger';
+
 export class CommonResponseDto<T = unknown> {
-  status!: number;
+  @ApiProperty({ example: 200 })
+  statusCode!: number;
+
+  @ApiProperty({ example: 'Success' })
   message!: string;
-  data?: T;
+
+  @ApiProperty({ description: 'Endpoint-specific response data' })
+  data!: T;
+
+  @ApiProperty({ format: 'date-time' })
+  timestamp!: string;
+
+  @ApiProperty({ description: 'Request correlation identifier' })
+  requestId!: string;
 }

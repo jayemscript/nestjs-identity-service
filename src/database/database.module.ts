@@ -1,9 +1,9 @@
 import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
-import { DatabaseService } from './database.service';
+import { DatabaseService } from './database.service.js';
 
-const ENTITIES = []
+const ENTITIES = [];
 
 @Global()
 @Module({

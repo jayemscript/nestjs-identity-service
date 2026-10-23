@@ -4,9 +4,15 @@ An authentication and identity backend service designed around **NestJS**, **Bet
 
 The service provides a reusable identity layer for internal applications, SaaS products, ERP systems, and multiple applications sharing the same users through **REST APIs / HTTP**.
 
-**Project status:** architecture and implementation documentation are complete; the application remains an incomplete scaffold. The capabilities below describe the planned service, not implemented features.
+**Project status:** the first application-shell milestone provides validated runtime configuration, liveness, and shared HTTP conventions. Authentication, database schemas, authorization, and SMTP remain planned work. The capabilities below describe the target service, not implemented features.
 
 Start with the [documentation index and implementation roadmap](docs/README.md).
+
+## Run the current shell
+
+Use Node.js 24.22.1 and pnpm 11.25.0. Copy `.env.example` to `.env`, then install dependencies with a pnpm store outside this repository and run `pnpm start:dev`. `GET /health/live` returns `{ "status": "ok" }` without contacting a database. In non-production environments, `/docs` describes the routes that currently exist.
+
+The Makefile provides `make dev`, `make lint`, `make test`, `make test-e2e`, and `make verify` (`verify` runs lint and both test suites). The current shell does not expose `/health/ready` or `/api/auth/*`; those routes require the persistence and security milestones. The migration recipes return in the persistence milestone.
 
 ## Application Platforms
 

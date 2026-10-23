@@ -1,21 +1,24 @@
-generate_migration:
-	npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:generate -d src/database/data-source.ts src/migrations/$(name)
+.PHONY: dev lint test test-e2e verify
 
-empty_migration:
-	npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:create src/migrations/$(name)
+ifeq ($(OS),Windows_NT)
+PNPM := cmd.exe /d /c pnpm.cmd
+else
+PNPM := pnpm
+endif
 
-run_migration:
-	npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:run -d src/database/data-source.ts
-
-show_migration:
-	npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:show -d src/database/data-source.ts
-
-revert_migration:
-	npx ts-node -r tsconfig-paths/register ./node_modules/typeorm/cli.js migration:revert -d src/database/data-source.ts
+dev:
+	$(PNPM) start:dev
 
 build:
-	pnpm build
-dev:
-	pnpm start:dev
-prod:
-	pnpm build && pnpm start
+	$(PNPM) build
+
+lint:
+	$(PNPM) lint
+
+test:
+	$(PNPM) test --runInBand
+
+test-e2e:
+	$(PNPM) test:e2e --runInBand
+
+verify: lint test test-e2e

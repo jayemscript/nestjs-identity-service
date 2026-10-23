@@ -1,7 +1,6 @@
-# SERVER
-FROM node:22-alpine AS base
+FROM node:24.22.1-alpine3.24 AS base
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.25.0 --activate
 
 
 # Build stage
@@ -13,7 +12,8 @@ COPY package.json pnpm-lock.yaml ./
 
 RUN pnpm install \
     --frozen-lockfile \
-    --dangerously-allow-all-builds
+    --ignore-scripts \
+    --store-dir=/pnpm/store
 
 COPY . .
 
@@ -36,12 +36,11 @@ COPY package.json pnpm-lock.yaml ./
 RUN pnpm install \
     --frozen-lockfile \
     --prod \
-    --dangerously-allow-all-builds
+    --ignore-scripts \
+    --store-dir=/pnpm/store
 
 COPY --from=builder /app/dist ./dist
 
-RUN mkdir -p /app/uploads
-
 EXPOSE 7000
 
-CMD ["pnpm", "run", "start:prod"]
+CMD ["node", "dist/main.js"]

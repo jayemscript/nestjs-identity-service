@@ -1,3 +1,3 @@
-export * from './data-source';
-export * from './database.module';
-export * from './database.service';
+export * from './data-source.js';
+export * from './database.module.js';
+export * from './database.service.js';

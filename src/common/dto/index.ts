@@ -1,2 +1,2 @@
-export * from './common-response.dto';
-export * from './error-response.dto';
+export * from './common-response.dto.js';
+export * from './error-response.dto.js';

@@ -1,8 +1,8 @@
 # Authentication and Identity Service
 
-Status: proposed architecture and implementation specification. Last reviewed: 2026-10-15.
+Status: proposed architecture with the first application-shell milestone implemented. Last reviewed: 2026-10-23.
 
-This documentation defines how to turn the existing NestJS scaffold into a reusable HTTP authentication and identity service. It is intended for the engineer or coding agent implementing the service. Nothing described as planned is implemented merely because it appears here.
+This documentation defines how to turn the NestJS scaffold into a reusable HTTP authentication and identity service. It is intended for the engineer or coding agent implementing the service. The application shell provides configuration, liveness, and shared custom HTTP conventions; authentication and persistence remain planned. Nothing described as planned is implemented merely because it appears here.
 
 The first release requires web and native mobile (iOS and Android) authentication with every feature in the repository README: email and username/password, Google OAuth, two-factor authentication, magic links, email OTP, passkeys, enterprise SSO, account management, session management, and SuperAdmin bootstrap. These are delivered through smaller milestones; the first milestone is not the complete release. Native desktop remains future work.
 
@@ -110,13 +110,13 @@ Production enhancements after launch include distributed abuse storage, delivery
 - MFA-enabled users must present TOTP or a recovery code after every sign-in method. Neither Google/SSO authentication nor a passkey automatically substitutes for that enrolled factor.
 - First-party production hosts are exact allowlisted hosts within one controlled parent domain for a shared WebAuthn RP. Example domains throughout these documents are placeholders, not deployment claims.
 - No production workload, region, team owner, or regulatory retention obligation was supplied. Operational targets and retention periods are explicit engineering defaults to confirm before launch.
-- Runtime compatibility, migrations, external provider behavior, and test outcomes remain unverified until the later implementation work executes the documented checks.
+- The application shell has local lint, unit, end-to-end, and direct startup evidence. Exact Node 24.22.1 runtime compatibility, migrations, external provider behavior, and later milestone tests remain unverified.
 
 ## How to implement a phase
 
 Read its prerequisites and linked shared contracts. Implement only its stated application work in a later coding task. Follow the numbered implementation steps, collect acceptance evidence, update the milestone status, and preserve earlier invariants. Do not add a second credential store, challenge service, session issuer, or authorization server to compensate for a misunderstood plugin boundary.
 
-During this documentation task, no application implementation, package installation, builds, lint checks, or tests are authorized. Do not create `.pnpm-store`, logs, temporary scripts, render output, or caches in the repository.
+The first implementation session is limited to the runtime and common application shell. Keep package stores outside the repository, including `.pnpm-store`. Later milestones add the database, native authentication integration, security policy, and SMTP delivery before core identity routes are exposed.
 
 ## Primary references
 

@@ -1,12 +1,12 @@
 # Dependencies and Compatibility
 
-Release classification: first-release prerequisite, M0. Last reviewed: 2026-10-23.
+Release classification: first-release prerequisite, M0. Last reviewed: 2026-10-27.
 
 [Documentation index](../README.md) · Next: [Common infrastructure](../02-common-infrastructure/README.md)
 
 ## Objective and scope
 
-Define the smallest compatible dependency baseline for the planned service. Session 1 pins the runtime and package manager, converts the shell and tests to ESM, and removes direct packages with no scaffold use. Native authentication, SMTP, and security packages are installed only in their owning later sessions. No native handler or database-backed identity feature is operational yet.
+Define the smallest compatible dependency baseline for the planned service. Session 1 pinned the runtime and package manager, converted the shell and tests to ESM, and removed direct packages with no scaffold use. Session 2 installed matched Better Auth schema-inspection packages and added a database persistence baseline. No native authentication handler or SMTP transport is operational yet.
 
 ## Architecture and design
 
@@ -30,20 +30,20 @@ The original manifest specified ranges; the original lockfile resolved the follo
 
 Session 1 reuses configuration, Swagger, validation, TypeORM, and test packages. An import audit found no scaffold use of `@nestjs/jwt`, bcrypt, argon2, SimpleWebAuthn, Redis, throttler, or scheduling, so their direct dependencies were removed. Add a package in its owning session when implementation needs it; plugin-transitive dependencies remain owned by the plugin. The manifest now declares ESM, Node `>=24.22.1 <25`, and pnpm 11.25.0, with `.node-version` pinning the exact local target.
 
-### Proposed additions
+### Session 2 additions and later candidates
 
 | Package | Baseline researched | Purpose and boundary |
 | --- | --- | --- |
-| `better-auth` | 1.7.8 | Core plus bundled username, admin, two-factor, magic-link, email-OTP, bearer, and one-time-token plugins |
+| `better-auth` | 1.7.12 installed | Core plus bundled username, admin, two-factor, magic-link, email-OTP, bearer, and one-time-token plugins; schema inspection only so far |
 | `@thallesp/nestjs-better-auth` | 2.8.0 | Selected Nest integration: `AuthModule.forRootAsync`, `AuthService`, native handler middleware, and Nest authentication guard; no second manual handler |
-| `@better-auth/passkey` | 1.7.8 | Native passkey implementation |
-| `@better-auth/sso` | 1.7.8 | Inbound OIDC and SAML federation |
-| `@better-auth/api-key` | 1.7.8 candidate, matching the Better Auth release | Service credential lifecycle; sessions from keys disabled |
+| `@better-auth/passkey` | 1.7.12 installed | Native passkey schema |
+| `@better-auth/sso` | 1.7.12 installed | Inbound OIDC and SAML schema |
+| `@better-auth/api-key` | 1.7.12 installed | Service credential schema; sessions from keys disabled in inspection config |
 | `nodemailer` | 10.1.1 | SMTP transport only |
 | `@types/nodemailer` | Matching compatible type declarations if required | Development typing only |
 | `@nestjs/terminus` | Nest 11-compatible release, pin before installation | Liveness/readiness composition |
 | `helmet` | Express 5/Node 24-compatible release, pin before installation | Security headers at the HTTP boundary |
-| `auth` CLI | Exact version compatible with the chosen Better Auth release | Development-only schema SQL inspection/generation in later implementation |
+| `auth` CLI | 1.7.12 installed as a development dependency | Native SQL inspection only; not a deployment migration runner |
 
 Versions above are research observations, not a promise of future availability or permission to use floating `latest`. Before future installation, record exact versions, peer requirements, package integrity, relevant advisories, and license/deployment constraints. Pin the reviewed result in the manifest/lockfile. Do not replace the chosen persistence path with a community adapter as an installation workaround.
 
@@ -52,17 +52,17 @@ Versions above are research observations, not a promise of future availability o
 - Published and installed `@nestjs/typeorm` 11.0.3 metadata permits Nest 10/11 and TypeORM `^0.3.0 || ^1.0.0-dev`. The existing stable TypeORM 1.1.2 resolution must be checked with the package manager's semver interpretation and actual APIs during implementation; do not declare it broken merely because it is 1.x.
 - TypeORM 1.1.2 declares Node `^20.19.0 || ^22.13.0 || >=24.11.0`; the selected Nest bridge 2.8.0 requires Node `>=22.22.1`. Node **24.22.1 LTS** satisfies both and is the [October 21 security release](https://nodejs.org/en/blog/release/v24.22.1/). The old Node 22 recommendation is superseded. Local verification must use 24.22.1 or report the version gap.
 - The [tagged bridge 2.8.0 manifest](https://github.com/ThallesP/nestjs-better-auth/blob/v2.8.0/package.json) declares ESM-only exports and peers for Nest `^11.1.6 || ^12.0.0`, TypeScript `^5.9.2 || ^6.0.0`, and Better Auth `>=1.5.0 <2.0.0`; Express 5 is an optional peer. The [tagged source](https://github.com/ThallesP/nestjs-better-auth/blob/v2.8.0/src/auth-module.ts) implements `AuthModule.forRootAsync`, while the [Better Auth Nest guide](https://better-auth.com/docs/integrations/nestjs) shows the simpler `forRoot` path and requires `bodyParser: false`. Native runtime compatibility remains unverified until its owning session.
-- [Better Auth v1.7.8](https://github.com/better-auth/better-auth/releases/tag/v1.7.8) is the documented matched release candidate for core and standalone plugins; current product docs may show newer versions. The candidate is intentionally frozen for the later package review. Better Auth and the bridge publish ESM. `module: nodenext` alone does not turn `.ts` output into ESM when the package has no `type: module`; Session 1 adds that declaration and relative `.js` specifiers.
+- Better Auth 1.7.8 was the earlier research candidate. Session 2 pinned core, passkey, SSO, API key, and the `auth` CLI at 1.7.12 in the manifest and lockfile for native schema generation. Better Auth and the future Nest bridge publish ESM. `module: nodenext` alone does not turn `.ts` output into ESM when the package has no `type: module`; Session 1 added that declaration and relative `.js` specifiers.
 - Better Auth's PostgreSQL path accepts `pg.Pool`. It does not require a TypeORM adapter. Pools have separate connection budgets and transactions.
 - Web and native iOS/Android authentication are first-release requirements. The bundled `bearer` and `oneTimeToken` plugins provide native session transport; no Expo-only integration, OAuth token issuer, mobile client secret, JWT session, or refresh-token pair is required. Primary authentication and enrolled MFA complete in a hosted system browser before the [mobile handoff](../14-mobile-authentication/README.md).
 - For the pinned release, configure `bearer({ requireSignature: true })` and `oneTimeToken({ disableClientRequest: true, storeToken: 'hashed', expiresIn: 1, disableSetSessionCookie: false, setOttHeaderOnNewSession: false })`. One-time-token expiry is in minutes. Native generate/verify operations are server API calls behind the gateway, never directly exposed HTTP endpoints. Validate the signed bearer returned by native verification through typed `auth.api.getSession` using the bearer plugin; do not read `auth.session` by token or treat a signature as sufficient authorization.
-- Session 1 verifies the shell through focused tests, non-fixing lint, and direct startup, subject to the actual local Node version. The user prohibited a build check; compiled production startup, migrations, database connections, native auth, and external-provider behavior remain unverified.
+- Session 1 verified the shell through focused tests and direct startup. Session 2 verified migrations, database connections, and persistence stores against local PostgreSQL; the native handler and external-provider behavior remain unverified. The local Node version is below the declared 24.22.1 target, and no Session 2 lint or build check was run.
 
 ## Dependencies and prerequisites
 
 The [overview](../00-project-overview/README.md) supplies requirements. Before feature implementation, identify the runtime image digest, package-manager version, PostgreSQL target version, SMTP transport settings, and externally supplied application origins. Use PostgreSQL 18 as the proposed new-deployment baseline unless the actual platform supplies another supported version; validate selected SQL against the real server rather than assuming its version.
 
-Keep package-manager stores and caches outside the repository. Never create `.pnpm-store` inside any repository. Session 1 uses only existing runtime packages, removes unused direct dependencies, and refreshes the lockfile without enabling dependency lifecycle scripts. The first native package installation occurs when its schema or handler is implemented.
+Keep package-manager stores and caches outside the repository. Never create `.pnpm-store` inside any repository. Session 2 installed the native schema-inspection packages with an external package store and without enabling unreviewed dependency lifecycle scripts.
 
 ## Database design
 
@@ -82,8 +82,8 @@ Retain Better Auth's password hashing contract initially; bcrypt and argon2 are 
 
 1. Session 1: pin Node 24.22.1 and pnpm 11.25.0; update the container tag, ESM package/imports, Jest ESM transforms, and non-fixing Makefile verification commands. Remove unused direct packages after import audit.
 2. Session 1: keep the database module dormant; verify the shell through targeted tests, lint, and direct startup. Do not claim compiled production compatibility because no build check is authorized.
-3. Persistence session: review the exact matched Better Auth/plugin/CLI metadata and lifecycle scripts before installation. Generate the full native schema from that pinned configuration.
-4. Persistence session: replace the old CommonJS TypeORM CLI/Makefile recipes with a supported ESM loader for local work and compiled-JS migration job for deployment. Test both against a disposable PostgreSQL server.
+3. Session 2 completed: review matched Better Auth/plugin/CLI metadata and lifecycle scripts, pin 1.7.12, and generate the full native schema from that configuration.
+4. Session 2 completed the ESM TypeORM CLI/Makefile path against local PostgreSQL. The compiled-JS deployment migration job remains to be verified in a deployment environment.
 5. Native-handler session: install the bridge, confirm asynchronous provider initialization, and collect actual middleware/route compatibility evidence before enabling auth endpoints.
 
 ## Acceptance criteria
@@ -109,7 +109,7 @@ Retain Better Auth's password hashing contract initially; bcrypt and argon2 are 
 - [Nest TypeORM integration](https://docs.nestjs.com/data/typeorm)
 - [Nest TypeORM 11.0.3 package metadata](https://registry.npmjs.org/@nestjs%2ftypeorm/11.0.3)
 - [TypeORM 1.1.2 package metadata](https://registry.npmjs.org/typeorm/1.1.2)
-- [Better Auth 1.7.8 package metadata](https://registry.npmjs.org/better-auth/1.7.8)
+- [Better Auth 1.7.12 package metadata](https://registry.npmjs.org/better-auth/1.7.12)
 - [Nodemailer SMTP transport](https://nodemailer.com/smtp)
 - [Node.js ESM packages](https://nodejs.org/api/packages.html#type)
 - [Node.js 24.22.1 LTS security release](https://nodejs.org/en/blog/release/v24.22.1/)

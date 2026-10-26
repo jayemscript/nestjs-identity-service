@@ -1,6 +1,6 @@
 # Common Infrastructure
 
-Release classification: first-release foundation, M1. Last reviewed: 2026-10-15.
+Release classification: first-release foundation, M1. Last reviewed: 2026-10-27.
 
 [Documentation index](../README.md) · Prerequisite: [Dependencies](../01-dependencies-and-compatibility/README.md)
 
@@ -37,13 +37,13 @@ Use existing ConfigModule, class-validator/class-transformer, Swagger, and logge
 
 ### Configuration contract
 
-All names below are planned configuration inputs; existing files remain unchanged. Keep current `PORT`, `NODE_ENV`, and `DB_*` connectivity names where practical.
+Session 2 implemented the shared database connection settings and distinct database-role inputs below. Auth, service-key, and mail inputs remain planned. Keep current `PORT`, `NODE_ENV`, and `DB_*` connectivity names where practical.
 
 | Group | Inputs and validation |
 | --- | --- |
 | Runtime | `PORT` integer 1..65535; `NODE_ENV` explicit development/test/production/maintenance; maintenance actually gates mutations |
 | Shared DB | Existing host/port/name; verified TLS with `DB_SSL`, `DB_CA_CERT`; connection/statement timeouts and per-pool limits |
-| DB identities | `AUTH_DB_USER/PASS`, `IDENTITY_DB_USER/PASS`, `AUDIT_DB_USER/PASS`; separate `MIGRATION_DB_USER/PASS` only in migration jobs |
+| DB identities | `AUTH_DB_USER/PASS`, `IDENTITY_DB_USER/PASS`, `AUDIT_DB_USER/PASS`; separate `MIGRATION_DB_USER/PASS` for migration jobs and `RETENTION_DB_USER/PASS` for cleanup jobs |
 | Schemas | `AUTH_DB_SCHEMA=auth`, `IDENTITY_DB_SCHEMA=identity`, `AUDIT_DB_SCHEMA=audit`; fixed validated identifiers, no request-selected schema |
 | Auth | Versioned Better Auth secret/key ring, stable app name, exact `AUTH_PUBLIC_ORIGINS`, `AUTH_RP_ID`, bootstrap canonical origin |
 | HTTP trust | Exact proxy topology/CIDRs, exact allowed hosts/origins, approved BFF mapping; do not treat hop count alone as caller authentication |

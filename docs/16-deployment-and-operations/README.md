@@ -1,6 +1,6 @@
 # Deployment and Operations
 
-Release classification: first-release production launch gate, M5. Last reviewed: 2026-10-15.
+Release classification: first-release production launch gate, M5. Last reviewed: 2026-10-26.
 
 [Documentation index](../README.md) · Prerequisites: all first-release feature contracts and [verification strategy](../15-testing-strategy/README.md)
 
@@ -8,7 +8,7 @@ Release classification: first-release production launch gate, M5. Last reviewed:
 
 Specify a deployable, recoverable operating model for the service. Reuse the existing container approach, PostgreSQL, and SMTP. A managed container service or ordinary VM/container host is sufficient; Kubernetes, Redis, a broker, and multiple regions are not required by this design.
 
-These are runbook specifications for future implementation. No deployment, container build, migration, health probe, backup, restore, load test, or external side effect is performed in this documentation task.
+These are launch runbook specifications. Session 2 has local database migrations, role separation, internal readiness, bounded HTTP shutdown, and a separate retention job; see the [local operations guide](../03-database-and-persistence/SESSION-2-OPERATIONS.md). The public readiness probe, deployment, container build, SMTP, backup/restore, load testing, and production operating evidence remain future work.
 
 ## Architecture and design
 
@@ -16,7 +16,7 @@ These are runbook specifications for future implementation. No deployment, conta
 
 Initially run the API and bounded email dispatcher in one service process with shared PostgreSQL leasing. It can scale to multiple replicas without in-memory security state or duplicate active job claims. A separate worker process using the same delivery contract is a later production enhancement, not a prerequisite. Size all database pools across maximum replicas, workers, migration jobs, audit reads, and operator reserve.
 
-The current Dockerfile is a starting point. Future work pins a supported Node 22 patch at least 22.22.1 for the selected Nest integration library, its image digest, and the pnpm version; reviews lifecycle scripts; builds in a builder stage; and copies only production essentials. Run as an unprivileged user with read-only application files and no unnecessary upload directory. Keep package stores outside the checkout/build context and secrets out of layers. The production image contains compiled migration code for the dedicated migration job or a separate reviewed migration image.
+The current Dockerfile is a starting point. The project declares Node 24.22.1 and pnpm 11.25.0; the local Session 2 machine used an earlier Node 24 patch. Future work pins a supported production image digest, reviews lifecycle scripts, builds in a builder stage, and copies only production essentials. Run as an unprivileged user with read-only application files and no unnecessary upload directory. Keep package stores outside the checkout/build context and secrets out of layers. The production image must contain compiled migration code for the dedicated migration job or a separate reviewed migration image; compiled startup has not been verified in Session 2.
 
 The private backend accepts application traffic only from authenticated registered BFF/gateway/backend clients. Public mobile clients reach only their mobile gateway, which holds the backend key. Publish provider callbacks through approved web or mobile-hosted authentication origins; do not expose internal validation/metrics to browsers or devices. Use TLS between components where traffic crosses trust boundaries and verify database/SMTP certificates.
 
@@ -24,9 +24,9 @@ First-release mobile deployment additionally requires exact registered HTTPS aut
 
 ### Startup and shutdown
 
-Startup validates configuration, initializes bounded auth/identity/audit pools, verifies expected migration/schema version without mutating it, creates the native integration and policy hooks, and then marks readiness. Startup never creates tables, runs migrations, generates credentials, or seeds an admin implicitly.
+The current startup validates configuration, initializes bounded auth/identity/audit connections, checks their schema/privilege profiles and the required migrations without mutating them, then starts the liveness route. The native integration, policy hooks, and public readiness route are later work. Startup never creates tables, runs migrations, generates credentials, or seeds an admin implicitly.
 
-On termination, withdraw readiness immediately, stop claiming new mail jobs, drain active HTTP requests and SMTP submissions for at most 30 seconds, then close transport/pools. A send is bounded below the delivery lease lifetime. Unfinished jobs recover through their lease; SMTP may already have accepted a message, so the next attempt can duplicate delivery.
+The current process withdraws its internal readiness state on SIGINT/SIGTERM, drains HTTP for at most 30 seconds, then closes the pools. When the public readiness route and mail worker are implemented, termination must also expose the withdrawn state to the orchestrator, stop new claims, and drain bounded SMTP submissions before closing its transport. An unfinished job recovers through its lease; SMTP may already have accepted a message, so the next attempt can duplicate delivery.
 
 ## Dependencies and prerequisites
 

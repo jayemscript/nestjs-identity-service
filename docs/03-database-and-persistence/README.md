@@ -1,22 +1,28 @@
 # Database and Persistence
 
-Release classification: first-release foundation, M1. Last reviewed: 2026-10-15. Status: implementation specification; migrations have not been executed.
+Release classification: first-release foundation, M1. Last reviewed: 2026-10-27. Status: Session 2 persistence baseline implemented locally; the complete M1 and first-release flows remain in progress.
 
 [Documentation index](../README.md) · Prerequisites: [Compatibility](../01-dependencies-and-compatibility/README.md), [Common infrastructure](../02-common-infrastructure/README.md)
 
 ## Objective and scope
 
-Persist shared authentication identities and service policy in PostgreSQL without placing application objects in `public`. Preserve the existing database module/data-source entrypoints while replacing their duplicated options, empty entity registrations, insecure TLS defaults, and public-schema assumptions in the future implementation.
+Persist shared authentication identities and service policy in PostgreSQL without placing application objects in `public`. Session 2 retained the database module/data-source entrypoints, consolidated their options, registered service entities explicitly, removed public-schema fallback, and requires verified TLS for production connections.
 
 Dedicated schemas organize ownership; grants enforce isolation. They do not isolate tenants or protect one module from another module running with all the same database credentials. This release has one shared identity realm.
 
 The first release includes both web cookie and native iOS/Android signed bearer authentication. They use the same native users/sessions and service assurance records; mobile orchestration adds no parallel password, JWT, refresh-token, or session-credential store. See the [mobile contract](../14-mobile-authentication/README.md).
 
+### Session 2 implementation snapshot
+
+The local PostgreSQL 18.2 `auth_db` has nine applied TypeORM migrations in `identity.schema_migrations`: the schema/privilege foundation, generated Better Auth 1.7.12 native schema, core service records, workflow/audit records, array-default alignment, maintenance grants, narrow native-session read access for orphan cleanup, and two forward refinements of maintenance reads. They create nine native tables in `auth`, eighteen service tables in `identity`, and one event table in `audit`; the ledger is the nineteenth `identity` table. A separate administrator bootstrap provisions the three schemas and distinct migration, native, identity, audit, and retention logins. Runtime pools use fixed search paths and restricted grants.
+
+The implemented persistence interfaces cover primary policy-state reads, abuse/replay claims, operation leases, encrypted-delivery **storage** and fencing, mobile transaction transitions, durable administration phases, append-only audit writes, retention sweeps, narrow orphan-assurance cleanup, and an internal database-readiness check. Session 2 adds no HTTP route. The native Better Auth handler is not mounted; there is no sign-in, authorization endpoint, SMTP transport, delivery encryption implementation, SSO field decorator, or complete reconciliation worker in this session. These records and stores supply later sessions; they do not by themselves authenticate or authorize a request. See the [Session 2 operations guide](SESSION-2-OPERATIONS.md) for commands, evidence, and recovery limits.
+
 ## Architecture and design
 
 | Boundary | Writer and connection | Objects |
 | --- | --- | --- |
-| `auth` | Better Auth 1.7.8 supported PostgreSQL integration using its own `pg.Pool`, with narrow native SSO field protection | Native core, enabled plugin, and database rate-limit tables |
+| `auth` | Better Auth 1.7.12 native schema inspected through its supported PostgreSQL integration; a dedicated `pg.Pool` is ready for the future runtime handler and SSO field protection | Native core, enabled plugin, and database rate-limit tables |
 | `identity` | Existing Nest TypeORM data-source boundary | Applications, memberships, assurance, workflow orchestration, delivery, and service bindings |
 | `audit` | Dedicated TypeORM data source using an insert-only runtime identity | Append-oriented security events |
 | Migration ledger | Privileged TypeORM migration connection | `identity.schema_migrations`; one ordered history for all schemas |
@@ -27,9 +33,9 @@ The existing `DatabaseService` owns the identity data source. Separate providers
 
 ### Migration ownership and transactions
 
-TypeORM is the single deployment migration runner, with automatic synchronization and application-start migrations disabled. In a later implementation task, use the exact pinned Better Auth CLI/configuration to inspect generated SQL, review it, qualify every native object into `auth`, and incorporate the resulting statements into ordered TypeORM migrations. Do not run the native migration command against deployed environments alongside TypeORM. Capture the package/plugin versions and configuration fingerprint in migration review notes. Native generated SQL is an input to review, not authority to replace service tables.
+TypeORM is the single deployment migration runner, with automatic synchronization and application-start migrations disabled. Session 2 used the exact pinned Better Auth CLI/configuration to inspect generated SQL, qualified every native object into `auth`, and incorporated it into an ordered TypeORM migration. The generated SQL and inspection-config SHA-256 fingerprints are in `NativeAuth1792972800002`. Do not run the native migration command against deployed environments alongside TypeORM. Native generated SQL remains an input to review, not authority to replace service tables.
 
-Schema inspection has a separate entrypoint/profile built from the same validated full plugin/options configuration and raw native `pg.Pool` with the `auth` search path. Omit only the runtime SSO field-protection decorator/database factory: the native migration machinery needs its supported PostgreSQL configuration to generate SQL and cannot infer it from an arbitrary decorated adapter factory. Compare configuration fingerprints excluding that wiring difference so inspection and runtime enable exactly the same models/fields. This profile is for later reviewed schema inspection only; it is never a plaintext-production mode or a second deployment migration runner.
+Schema inspection has a separate entrypoint/profile in `scripts/database/better-auth-inspection.ts`, built from the full enabled plugin/options configuration and raw native `pg.Pool` with the `auth` search path. The runtime SSO field-protection decorator/database factory remains future work; native migration machinery cannot infer PostgreSQL SQL generation from an arbitrary decorated adapter factory. When the runtime handler is added, compare configuration fingerprints excluding that wiring difference so inspection and runtime enable exactly the same models/fields. This profile is never a plaintext-production mode or a second deployment migration runner.
 
 For mobile registration, `mobile_clients.auth_origin` equals its application's registered `public_origin`; use a distinct application registration for a mobile channel when its host differs from a web channel, and explicitly grant shared users the required memberships. Do not bypass the existing exact-origin checks by silently accepting another origin on the same row. The mobile transaction additionally stores an authenticated encrypted copy of client state only for its required return-link echo (`client_state_ciphertext`, IV, tag, key ID), alongside the comparison hash. Purge that encrypted echo at completion/expiry. No reusable native session secret or PKCE verifier is stored there.
 
@@ -100,15 +106,15 @@ Account deletion first commits `lifecycle=deleting`, increments the security epo
 | Identity runtime | USAGE `identity`; required CRUD/sequence privileges | No native or audit access; no DDL; revoke unneeded table operations where practical |
 | Audit runtime | USAGE `audit`; INSERT on events only | No SELECT/UPDATE/DELETE/TRUNCATE; RETURNING must not require unavailable SELECT privileges |
 | Audit reader | SELECT on restricted audit views/tables | No mutation; available only to authorized operational tooling |
-| Retention maintenance | Narrow DELETE/field-purge privileges for approved retention jobs | Separate credentials/job; no schema ownership |
+| Retention maintenance | Bounded cleanup with column-level reads of service predicates/cursors and native session ID, user ID, and expiry | Separate credentials/job; no schema ownership or native token, delivery ciphertext, or mobile client-state read |
 
 Revoke CREATE on `public` and unnecessary PUBLIC schema access in the dedicated service database; no service object lives there. Review grants inherited through role membership and default privileges for both current and future tables/sequences. Schema isolation relies on those permissions, as described by [PostgreSQL schemas](https://www.postgresql.org/docs/current/ddl-schemas.html). A separate audit connection reduces accidental modification; a compromised process holding every runtime credential can still submit fabricated audit entries. Stronger external immutable audit storage is a later enhancement.
 
 ## API contracts
 
-This phase creates no HTTP endpoint. Internal persistence interfaces are `NativeAuth` (typed supported native server APIs), `IdentityRepository` (policy reads and transaction-scoped custom mutations), `AuditWriter.append(event)` (durable success or error), and `DeliveryQueue.enqueue(message)` (durable job ID or error). Their inputs carry authenticated application/request context; they never derive permissions from a caller-selected schema.
+Session 2 adds no HTTP endpoint. It prepares an internal readiness decision; the public `GET /health/ready` contract remains for the later security and operations composition. Implemented internal interfaces include the native pool, `IdentityRepository` (policy reads and atomic service mutations), `AuditWriter.append(event)` (durable append or error), and `DeliveryQueueStore.enqueueSealed(job)` (durable job ID or error). The queue caller must assign its UUIDv7 job ID before encryption so the future ciphertext can bind that ID as authenticated associated data. Typed native authentication calls and authenticated application/request context belong to the native-handler session; these stores never derive permissions from a caller-selected schema.
 
-Migration jobs are deployment operations, not public APIs. Health APIs report dependency readiness without exposing connection strings, schema inventories, migration SQL, or raw errors. Administrative resource methods and concurrency contracts are specified in [Authorization](../08-authorization-and-bootstrap/README.md).
+Migration jobs are deployment operations, not public APIs. The future public readiness API will report dependency readiness without exposing connection strings, schema inventories, migration SQL, or raw errors. Administrative resource methods and concurrency contracts are specified in [Authorization](../08-authorization-and-bootstrap/README.md).
 
 ## Security considerations
 
@@ -116,16 +122,14 @@ Treat password hashes, TOTP material, provider refresh/access tokens, verificati
 
 Parameterized queries and schema-qualified identifiers are mandatory. Do not interpolate user identifiers or migration SQL fragments. Readiness fails if required schemas/version/grants cannot support policy decisions. Graceful shutdown stops claims and new requests, drains bounded in-flight work, then closes the native pool and both TypeORM data sources; terminate any abandoned transaction safely.
 
-## Ordered implementation steps
+## Implementation status and remaining steps
 
-1. Refactor the existing runtime and CLI database options to one validated configuration source; preserve future ESM compatibility.
-2. Provision schema owner/runtime/reader/maintenance roles and verified TLS; establish pool budgets and startup search paths.
-   Implement the minimal server-only application/service-client provisioning and authenticated ingress subset from [Integration](../13-application-and-service-integration/README.md) in M1 so the HTTP trust boundary can be configured without a bootstrap dependency cycle; the complete integration milestone remains M5.
-3. Enumerate the full pinned native plugin schema; review SQL and embed it with service DDL/grants in the single ordered migration sequence.
-4. Register only service-owned TypeORM entities explicitly; keep native authentication tables outside synchronization and metadata diff generation.
-5. Implement repositories, compare-and-swap updates, claim/lease transactions, and logical-reference validation.
-6. Implement durable administration/bootstrap reconciliation and retention/orphan cleanup with independent privileged jobs.
-7. Implement readiness/shutdown behavior; collect future migration/grant/concurrency evidence from the [Testing strategy](../15-testing-strategy/README.md) before promoting M1.
+Session 2 completed shared validated database configuration, administrator role/schema bootstrap, one reviewed native/service migration history, explicit service entities, initial policy/workflow stores, bounded retention and stale-assurance cleanup, internal readiness, and bounded shutdown. Local migration, grant, and concurrency evidence is in the [operations guide](SESSION-2-OPERATIONS.md).
+
+1. Implement the minimal server-only application/service-client provisioning and authenticated ingress subset from [Integration](../13-application-and-service-integration/README.md) before opening authentication traffic.
+2. Wire the native handler and typed APIs, then validate native user/session/provider references before service policy can authorize a request.
+3. Complete durable administration/bootstrap reconciliation, delivery encryption and SMTP dispatch, and the remaining orphan/partial-operation recovery paths.
+4. Verify compiled deployment migrations, actual production TLS and Node runtime, restore order, and the full concurrency/launch evidence from [Testing strategy](../15-testing-strategy/README.md) before promoting M1.
 
 ## Measurable acceptance criteria
 

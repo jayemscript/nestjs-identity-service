@@ -4,15 +4,15 @@ An authentication and identity backend service designed around **NestJS**, **Bet
 
 The service provides a reusable identity layer for internal applications, SaaS products, ERP systems, and multiple applications sharing the same users through **REST APIs / HTTP**.
 
-**Project status:** the first application-shell milestone provides validated runtime configuration, liveness, and shared HTTP conventions. Authentication, database schemas, authorization, and SMTP remain planned work. The capabilities below describe the target service, not implemented features.
+**Project status:** the application shell and Session 2 PostgreSQL persistence baseline are implemented locally. Nine reviewed migrations create the native Better Auth and service-owned schemas and their restricted grants. Startup checks database readiness internally, while the HTTP surface still exposes only liveness. Authentication handlers, authorization routes, SMTP delivery, and the other capabilities below remain future work.
 
 Start with the [documentation index and implementation roadmap](docs/README.md).
 
-## Run the current shell
+## Run the current persistence baseline
 
-Use Node.js 24.22.1 and pnpm 11.25.0. Copy `.env.example` to `.env`, then install dependencies with a pnpm store outside this repository and run `pnpm start:dev`. `GET /health/live` returns `{ "status": "ok" }` without contacting a database. In non-production environments, `/docs` describes the routes that currently exist.
+Use Node.js 24.22.1 and pnpm 11.25.0. Copy `.env.example` to `.env`, supply distinct database-role credentials, and keep any pnpm store outside this repository. Bootstrap the local PostgreSQL roles/schemas and apply the migrations as described in the [Session 2 operations guide](docs/03-database-and-persistence/SESSION-2-OPERATIONS.md). Then run `pnpm start:dev`. Startup checks the required database state before listening. `GET /health/live` returns `{ "status": "ok" }` without contacting a database. In non-production environments, `/docs` describes the routes that currently exist.
 
-The Makefile provides `make dev`, `make lint`, `make test`, `make test-e2e`, and `make verify` (`verify` runs lint and both test suites). The current shell does not expose `/health/ready` or `/api/auth/*`; those routes require the persistence and security milestones. The migration recipes return in the persistence milestone.
+The Makefile preserves `generate_migration`, `empty_migration`, `run_migration`, `show_migration`, and `revert_migration` through the ESM TypeORM runner. The current service does not expose `/api/auth/*` or user-facing identity routes.
 
 ## Application Platforms
 

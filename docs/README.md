@@ -1,8 +1,10 @@
 # Authentication and Identity Service
 
-Status: proposed architecture with the first application-shell milestone implemented. Last reviewed: 2026-10-23.
+Status: proposed first-release architecture; application shell and Session 2 persistence baseline implemented locally. Last reviewed: 2026-10-27.
 
-This documentation defines how to turn the NestJS scaffold into a reusable HTTP authentication and identity service. It is intended for the engineer or coding agent implementing the service. The application shell provides configuration, liveness, and shared custom HTTP conventions; authentication and persistence remain planned. Nothing described as planned is implemented merely because it appears here.
+This documentation defines how to turn the NestJS scaffold into a reusable HTTP authentication and identity service. It is intended for the engineer or coding agent implementing the service. The application shell and database persistence baseline now have local implementation and verification evidence. Native authentication handling, policy enforcement, SMTP delivery, and the rest of the first release remain planned. Nothing described as planned is implemented merely because it appears here.
+
+Some planned feature contracts cite source-inspected Better Auth 1.7.8 behavior. Session 2 installed 1.7.12 for native schema generation; revalidate those runtime behaviors against 1.7.12 before implementing the corresponding feature.
 
 The first release requires web and native mobile (iOS and Android) authentication with every feature in the repository README: email and username/password, Google OAuth, two-factor authentication, magic links, email OTP, passkeys, enterprise SSO, account management, session management, and SuperAdmin bootstrap. These are delivered through smaller milestones; the first milestone is not the complete release. Native desktop remains future work.
 
@@ -45,7 +47,7 @@ A shared user record does not grant access to every application. Enterprise SSO 
 | 00 | [Project overview](00-project-overview/README.md) | Boundaries, decisions, and current-state gaps understood |
 | 01 | [Dependencies and compatibility](01-dependencies-and-compatibility/README.md) | Runtime, package, and module-format baseline agreed |
 | 02 | [Common infrastructure](02-common-infrastructure/README.md) | Configuration, HTTP conventions, and composition ready |
-| 03 | [Database and persistence](03-database-and-persistence/README.md) | Three schemas and one migration sequence ready |
+| 03 | [Database and persistence](03-database-and-persistence/README.md) and [Session 2 operations](03-database-and-persistence/SESSION-2-OPERATIONS.md) | Three schemas, one migration sequence, and local runtime stores ready |
 | 04 | [Security and audit foundations](04-security-and-audit-foundations/README.md) | Ingress, abuse controls, policy hooks, and audit ready |
 | 05 | [SMTP delivery](05-smtp-delivery/README.md) | Expiring challenges can be delivered safely |
 | 06 | [Authentication and lifecycle](06-authentication-and-account-lifecycle/README.md) | Registration, credentials, verification, and recovery complete |
@@ -101,29 +103,29 @@ Production enhancements after launch include distributed abuse storage, delivery
 
 ## Locked decisions and working defaults
 
-- The deliverables are Markdown only. The selected System Design template supplies the overview structure; its retained DOCX is unchanged.
+- The architecture reference is maintained in Markdown. The selected System Design template supplies the overview structure; its retained DOCX is unchanged.
 - PostgreSQL schemas are `auth`, `identity`, and `audit`. Runtime processes cannot create schemas or tables.
 - Authentication uses database-backed opaque sessions. Cookie caching and authentication secondary storage are disabled initially; Redis is not required for the first release.
 - Web cookie sessions and mobile signed opaque bearer sessions share Better Auth's database-backed session authority; no parallel JWT/refresh-token pair is introduced. Native mobile is a public client. A server-held service key authenticates its gateway to the private backend.
-- Every mobile method uses the first-party hosted portal in ASWebAuthenticationSession/Android Custom Tabs. After complete MFA assurance, transfer the native session using a hashed one-time token with a one-minute lifetime, a PKCE S256-bound gateway transaction, and verified HTTPS Universal Links/App Links; never place a raw session token in a URL. Detailed contracts live in 13.
+- Every mobile method uses the first-party hosted portal in ASWebAuthenticationSession/Android Custom Tabs. After complete MFA assurance, transfer the native session using a hashed one-time token with a one-minute lifetime, a PKCE S256-bound gateway transaction, and verified HTTPS Universal Links/App Links; never place a raw session token in a URL. Detailed contracts live in 14.
 - Email uses Nodemailer as an SMTP transport library only. No provider SDK, Nest mailer framework, hosted email API, or email framework is introduced.
 - MFA-enabled users must present TOTP or a recovery code after every sign-in method. Neither Google/SSO authentication nor a passkey automatically substitutes for that enrolled factor.
 - First-party production hosts are exact allowlisted hosts within one controlled parent domain for a shared WebAuthn RP. Example domains throughout these documents are placeholders, not deployment claims.
 - No production workload, region, team owner, or regulatory retention obligation was supplied. Operational targets and retention periods are explicit engineering defaults to confirm before launch.
-- The application shell has local lint, unit, end-to-end, and direct startup evidence. Exact Node 24.22.1 runtime compatibility, migrations, external provider behavior, and later milestone tests remain unverified.
+- The application shell has its earlier local verification evidence. Session 2 adds nine applied migrations, local PostgreSQL role and persistence probes, and direct readiness/startup evidence. Exact Node 24.22.1 and compiled production startup remain unverified; no lint or build checks were run in Session 2.
 
 ## How to implement a phase
 
 Read its prerequisites and linked shared contracts. Implement only its stated application work in a later coding task. Follow the numbered implementation steps, collect acceptance evidence, update the milestone status, and preserve earlier invariants. Do not add a second credential store, challenge service, session issuer, or authorization server to compensate for a misunderstood plugin boundary.
 
-The first implementation session is limited to the runtime and common application shell. Keep package stores outside the repository, including `.pnpm-store`. Later milestones add the database, native authentication integration, security policy, and SMTP delivery before core identity routes are exposed.
+Session 1 established the runtime and common application shell. Session 2 established the database persistence baseline; see its [operations and evidence](03-database-and-persistence/SESSION-2-OPERATIONS.md). Keep package stores outside the repository, including `.pnpm-store`. Later sessions add the native authentication handler, security policy, and SMTP delivery before core identity routes are exposed.
 
 ## Primary references
 
 - [Better Auth documentation](https://better-auth.com/docs/introduction)
 - [NestJS documentation](https://docs.nestjs.com/)
 - [Selected Nest Better Auth integration](https://github.com/thallesp/nestjs-better-auth)
-- [Better Auth v1.7.8 source](https://github.com/better-auth/better-auth/tree/v1.7.8), used to resolve version-specific contracts
+- [Better Auth v1.7.12 source](https://github.com/better-auth/better-auth/tree/v1.7.12), pinned for the Session 2 native schema
 - [PostgreSQL schemas](https://www.postgresql.org/docs/current/ddl-schemas.html)
 - [Better Auth bearer sessions](https://better-auth.com/docs/plugins/bearer)
 - [Better Auth one-time tokens](https://better-auth.com/docs/plugins/one-time-token)

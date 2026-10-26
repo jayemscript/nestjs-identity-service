@@ -178,6 +178,7 @@ describe('application HTTP contracts (e2e)', () => {
     expect(document.paths['/health/live']?.get).toMatchObject({
       summary: 'Check whether the process is responding',
     });
+    expect(document.paths).not.toHaveProperty('/health/ready');
     expect(document.paths).not.toHaveProperty('/api/auth/sign-in/email');
     expect(document.components?.securitySchemes ?? {}).toEqual({});
   });

@@ -2,29 +2,24 @@ import { Module, Global } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DatabaseService } from './database.service.js';
-
-const ENTITIES = [];
+import {
+  createTypeOrmDatabaseOptions,
+  databaseEnvFromConfigService,
+} from './database-config.js';
+import { IDENTITY_ENTITIES } from './entities/index.js';
 
 @Global()
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule,
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => {
-        const isSSL = configService.get<string>('DB_SSL') === 'true';
-        return {
-          type: 'postgres',
-          host: configService.get<string>('DB_HOST'),
-          port: parseInt(configService.get<string>('DB_PORT') || '5432', 10),
-          username: configService.get<string>('DB_USER'),
-          password: configService.get<string>('DB_PASS'),
-          database: configService.get<string>('DB_NAME'),
-          schema: 'public',
-          entities: ENTITIES,
-          ssl: isSSL ? { rejectUnauthorized: false } : false,
-        };
-      },
+      useFactory: (configService: ConfigService) =>
+        createTypeOrmDatabaseOptions(
+          databaseEnvFromConfigService(configService),
+          'identity',
+          IDENTITY_ENTITIES,
+        ),
     }),
   ],
   providers: [DatabaseService],

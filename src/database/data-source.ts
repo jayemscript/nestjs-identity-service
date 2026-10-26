@@ -1,21 +1,17 @@
-//src/database/data-source.ts
-
+import 'reflect-metadata';
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import { fileURLToPath } from 'node:url';
+import { createTypeOrmDatabaseOptions } from './database-config.js';
+import { SERVICE_ENTITIES } from './entities/index.js';
 
-config();
-
-const ENTITIES = [];
+config({ quiet: true });
 
 export const AppDataSource = new DataSource({
-  type: 'postgres',
-  host: process.env.DB_HOST,
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  schema: 'public',
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
-  entities: ENTITIES,
-  migrations: ['src/migrations/*.{ts,js}'],
+  ...createTypeOrmDatabaseOptions(
+    process.env,
+    'migration',
+    SERVICE_ENTITIES,
+  ),
+  migrations: [fileURLToPath(new URL('../migrations/*.{ts,js}', import.meta.url))],
 });

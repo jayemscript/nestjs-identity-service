@@ -36,7 +36,7 @@ MFA-enabled users remain pending until the enrolled factor succeeds, including w
 
 ## Dependencies and prerequisites
 
-Use the reviewed Better Auth 1.7.8 baseline, the existing Express/Nest adapter, native PostgreSQL persistence, username/admin plugins, and SMTP callbacks. Complete database grants, durable audit intent, abuse controls, exact application binding, and the minimal provisioning path before opening registration. No provider SDK or mail framework is required.
+Use the pinned Better Auth 1.7.12 packages and the planned Express/Nest adapter, native PostgreSQL persistence, username/admin plugins, and SMTP callbacks. Earlier 1.7.8 source research is design input and must be revalidated against 1.7.12 before wiring native authentication. Complete database grants, durable audit intent, abuse controls, exact application binding, and the minimal provisioning path before opening registration. No provider SDK or mail framework is required.
 
 The future implementation must enable and validate native PostgreSQL transactions for token consumption, password reset, and session revocation. This document records source inspection, not executed compatibility or concurrency evidence.
 

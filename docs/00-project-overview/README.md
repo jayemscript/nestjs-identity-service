@@ -1,6 +1,6 @@
 # Authentication and Identity System Design
 
-Status: proposed. Last reviewed: 2026-10-15. Release classification: first-release architecture. Audience: backend implementers and architecture reviewers. Ownership and reviewer names have not been supplied.
+Status: proposed first-release architecture; application shell and Session 2 persistence baseline implemented locally. Last reviewed: 2026-10-27. Release classification: first-release architecture. Audience: backend implementers and architecture reviewers. Ownership and reviewer names have not been supplied.
 
 [Documentation index](../README.md)
 
@@ -8,7 +8,7 @@ Status: proposed. Last reviewed: 2026-10-15. Release classification: first-relea
 
 Provide one reusable identity backend over HTTP for approved first-party web and native iOS/Android applications. The complete first release includes both platforms, every README authentication method, and operational safeguards. Native desktop authentication remains future work. The system is an identity service, not an application business-data service.
 
-This document adapts the selected System Design reference's twelve-part design structure to Markdown. Other numbered documents expand the implementation specification. No application features have been implemented by this documentation task.
+This document adapts the selected System Design reference's twelve-part design structure to Markdown. Other numbered documents expand the implementation specification. The current implementation state is summarized below; most authentication flows remain planned.
 
 ## 1 Abstract
 
@@ -20,7 +20,7 @@ The critical invariant is that a native session identifies a user but is insuffi
 
 | Goals | Non-goals for release one |
 | --- | --- |
-| Every listed README feature has an implementable contract and acceptance gate | Implementing these features during this documentation task |
+| Every listed README feature has an implementable contract and acceptance gate | Treating the persistence baseline as a complete authentication release |
 | Reusable first-party HTTP integration and shared user identities | Automatically sharing cookies or sign-in across unrelated domains |
 | Web and native iOS/Android authentication through the same identity, MFA, and application policy | Native desktop authentication or selecting/implementing a mobile application framework |
 | Inbound enterprise OIDC and SAML federation | Operating an OAuth/OIDC authorization server |
@@ -30,26 +30,17 @@ The critical invariant is that a native session identifies a user but is insuffi
 
 ## 3 Background and problem statement
 
-The repository README describes a target service. The inspected source is an incomplete scaffold, not an existing identity system.
+The repository README describes the target service. The local implementation has completed the application shell and Session 2 persistence baseline, while authentication routes and most first-release features remain planned.
 
-| Observed state | Design implication |
+| Current local state | Next boundary |
 | --- | --- |
-| Better Auth is absent from the manifest and installed package inventory | Add it only in future implementation; do not describe authentication as operational |
-| `AppModule` imports absent `app.controller` and `app.service`, and imports no modules | Repair root composition before feature work; compilation was not run |
-| Configuration is initialized inside a database module that the root does not import | Establish one root configuration boundary and shared validation |
-| Runtime database configuration and CLI data source duplicate options and use empty entity arrays | Reuse both entrypoints through one configuration contract and explicit registrations |
-| Both database configurations specify `public` and disable certificate validation when SSL is enabled | Move ownership to dedicated schemas and verified TLS |
-| `BaseEntity` uses UUIDv7, timestamps, optimistic versioning, and soft deletion | Reuse selectively for custom mutable records; do not subclass native authentication tables |
-| Response DTO uses `status`; transform interceptor emits `statusCode` | Standardize custom HTTP contracts without wrapping Better Auth |
-| Error interceptor writes the response and rethrows | Replace terminal error ownership during later implementation to prevent duplicate writes |
-| Logging includes the original URL | Remove challenge, callback, and query secrets from logs |
-| Bootstrap configures 50 MB JSON and form parsers | Set small route limits and mount the native handler before parsing |
-| Swagger advertises JWT and treats `x-app-id` as an API key | Describe actual cookie and service-credential schemes instead |
-| Environment example anticipates BFF keys and Redis | Preserve intent, replace plaintext service-key configuration through a controlled cutover; Redis stays optional |
-| Docker uses floating pnpm and broadly permits dependency build scripts | Pin tooling and review build-script allowlists during deployment work |
-| The existing e2e test expects a scaffold root response | Replace its assumptions in the future testing phase |
+| Better Auth core, passkey, SSO, API-key packages and the `auth` CLI are pinned at 1.7.12; their reviewed native schema is imported into TypeORM history | Wire and verify the native handler in a later session; a schema alone cannot authenticate |
+| Nine migrations are applied in local PostgreSQL, with separate `auth`, `identity`, and `audit` schemas and restricted runtime roles | Run the reviewed migration job and role checks in each deployment environment |
+| Service-owned policy, workflow, delivery-storage, replay, lease, mobile, and audit persistence interfaces are present | Compose them with authenticated application context, native operations, encryption, and SMTP delivery |
+| Startup checks database profiles and required migrations; `/health/live` exists | Add the public `/health/ready` contract only with the later security and operations composition |
+| Local Node is 24.13.1, below the declared 24.22.1 target; Session 2 ran no lint or build check | Verify the target runtime and compiled deployment before production use |
 
-Local evidence: repository root README, package manifest/lockfile, `src/main.ts`, `src/app.module.ts`, existing `src/database` and `src/common`, `.env.example`, Dockerfile, Makefile, and existing test configuration. Source/configuration is unchanged by this task.
+The detailed commands, local evidence, and limits are in the [Session 2 operations guide](../03-database-and-persistence/SESSION-2-OPERATIONS.md). Older source-level Better Auth 1.7.8 research in later feature documents must be revalidated against the installed 1.7.12 release before those features are implemented.
 
 ## 4 Proposed architecture
 
@@ -111,7 +102,7 @@ For mobile, every sign-in method and enrolled MFA completes in the hosted browse
 | `/api/v1/*` | Nest | Authenticated account views, app administration, guarded SSO administration, and audit access |
 | `/internal/v1/*` | Nest | Service-authenticated session validation and application authorization; never browser-proxied |
 | Public gateway mobile routes | First-party gateway | Public-client transaction, browser completion, one-time-token exchange, and bearer session forwarding; exact routes and fields in the [mobile contract](../14-mobile-authentication/README.md#api-contracts) |
-| `/health/live`, `/health/ready` | Nest operations | Restricted health contracts, described in 16 |
+| `/health/live`, `/health/ready` | Nest operations | Liveness is implemented; public readiness is planned with the later operations composition described in 16 |
 
 The common custom envelope and shared types are defined in [02](../02-common-infrastructure/README.md). Native endpoint contracts are in 06 through 12. Integration and service key contracts are in [13](../13-application-and-service-integration/README.md).
 

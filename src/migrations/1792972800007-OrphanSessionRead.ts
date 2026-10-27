@@ -13,7 +13,11 @@ export class OrphanSessionRead1792972800007 implements MigrationInterface {
     `);
   }
 
-  async down(): Promise<void> {
-    throw new Error('Use a reviewed forward migration for reconciliation privileges');
+  down(): Promise<void> {
+    return Promise.reject(
+      new Error(
+        'Use a reviewed forward migration for reconciliation privileges',
+      ),
+    );
   }
 }

@@ -29,11 +29,14 @@ export interface SecurityEventInput {
   userAgent?: string;
 }
 
-function safeMetadata(value: SecurityEventInput['metadata']): Record<string, string | number | boolean | null> {
+function safeMetadata(
+  value: SecurityEventInput['metadata'],
+): Record<string, string | number | boolean | null> {
   if (!value) return {};
   const result: Record<string, string | number | boolean | null> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (!metadataKeys.has(key)) throw new Error('Unsupported audit metadata field');
+    if (!metadataKeys.has(key))
+      throw new Error('Unsupported audit metadata field');
     if (typeof item === 'string' && item.length > 128) {
       throw new Error('Audit metadata value is too long');
     }

@@ -38,7 +38,7 @@ The repository README describes the target service. The local implementation has
 | Nine migrations are applied in local PostgreSQL, with separate `auth`, `identity`, and `audit` schemas and restricted runtime roles | Run the reviewed migration job and role checks in each deployment environment |
 | Service-owned policy, workflow, delivery-storage, replay, lease, mobile, and audit persistence interfaces are present | Compose them with authenticated application context, native operations, encryption, and SMTP delivery |
 | Startup checks database profiles and required migrations; `/health/live` exists | Add the public `/health/ready` contract only with the later security and operations composition |
-| Local Node is 24.13.1, below the declared 24.22.1 target; Session 2 ran no lint or build check | Verify the target runtime and compiled deployment before production use |
+| Local Node is now 24.19.0, below the declared 24.22.1 target; the build, lint, and compiled startup passed locally | Verify the target runtime and container deployment before production use |
 
 The detailed commands, local evidence, and limits are in the [Session 2 operations guide](../03-database-and-persistence/SESSION-2-OPERATIONS.md). Older source-level Better Auth 1.7.8 research in later feature documents must be revalidated against the installed 1.7.12 release before those features are implemented.
 

@@ -112,7 +112,7 @@ Production enhancements after launch include distributed abuse storage, delivery
 - MFA-enabled users must present TOTP or a recovery code after every sign-in method. Neither Google/SSO authentication nor a passkey automatically substitutes for that enrolled factor.
 - First-party production hosts are exact allowlisted hosts within one controlled parent domain for a shared WebAuthn RP. Example domains throughout these documents are placeholders, not deployment claims.
 - No production workload, region, team owner, or regulatory retention obligation was supplied. Operational targets and retention periods are explicit engineering defaults to confirm before launch.
-- The application shell has its earlier local verification evidence. Session 2 adds nine applied migrations, local PostgreSQL role and persistence probes, and direct readiness/startup evidence. Exact Node 24.22.1 and compiled production startup remain unverified; no lint or build checks were run in Session 2.
+- The application shell has its earlier local verification evidence. Session 2 adds nine applied migrations, local PostgreSQL role and persistence probes, passing lint and build checks, compiled migration listing, and compiled startup smoke evidence. Exact Node 24.22.1 and container deployment remain unverified.
 
 ## How to implement a phase
 

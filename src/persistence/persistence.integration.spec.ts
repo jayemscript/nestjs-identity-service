@@ -5,12 +5,16 @@ import { DataSource, type QueryRunner } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
 import { createTypeOrmDatabaseOptions } from '../database/database-config.js';
 import { DatabaseService } from '../database/database.service.js';
-import { AdminOperationConflictError, AdminOperationStore } from './admin-operation-store.service.js';
+import {
+  AdminOperationConflictError,
+  AdminOperationStore,
+} from './admin-operation-store.service.js';
 import { DeliveryQueueStore } from './delivery-queue-store.service.js';
 import { IdentityRepository } from './identity-repository.service.js';
 import { MobileTransactionStore } from './mobile-transaction-store.service.js';
 
-const databaseDescribe = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
+const databaseDescribe =
+  process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 
 databaseDescribe('PostgreSQL persistence transitions', () => {
   let source: DataSource;
@@ -27,14 +31,17 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
 
   beforeAll(async () => {
     loadDotEnv({ quiet: true });
-    source = new DataSource(createTypeOrmDatabaseOptions(process.env, 'identity', []));
+    source = new DataSource(
+      createTypeOrmDatabaseOptions(process.env, 'identity', []),
+    );
     await source.initialize();
     runner = source.createQueryRunner();
     await runner.connect();
     await runner.startTransaction();
 
     const transactionSource = {
-      query: (sql: string, parameters?: unknown[]) => runner.query(sql, parameters),
+      query: (sql: string, parameters?: unknown[]) =>
+        runner.query(sql, parameters),
     } as unknown as DataSource;
     const database = new DatabaseService(transactionSource);
     identity = new IdentityRepository(database);
@@ -67,17 +74,21 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
   it('returns no policy state when required service records are missing or suspended', async () => {
     const userId = `policy-user-${suffix}`;
     const sessionId = `policy-session-${suffix}`;
-    expect(await identity.loadServicePolicyState(userId, applicationId, sessionId))
-      .toBeNull();
+    expect(
+      await identity.loadServicePolicyState(userId, applicationId, sessionId),
+    ).toBeNull();
     await runner.query(
-      'INSERT INTO identity.account_policies (user_id) VALUES ($1)', [userId],
+      'INSERT INTO identity.account_policies (user_id) VALUES ($1)',
+      [userId],
     );
     await runner.query(
       `INSERT INTO identity.application_memberships (application_id, user_id)
-       VALUES ($1, $2)`, [applicationId, userId],
+       VALUES ($1, $2)`,
+      [applicationId, userId],
     );
-    expect(await identity.loadServicePolicyState(userId, applicationId, sessionId))
-      .toBeNull();
+    expect(
+      await identity.loadServicePolicyState(userId, applicationId, sessionId),
+    ).toBeNull();
     await runner.query(
       `INSERT INTO identity.session_assurance
         (session_id, user_id, application_id, security_epoch, primary_method,
@@ -85,15 +96,17 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
        VALUES ($1, $2, $3, 1, 'password', now() + interval '10 minutes')`,
       [sessionId, userId, applicationId],
     );
-    expect(await identity.loadServicePolicyState(userId, applicationId, sessionId))
-      .toMatchObject({ assurance_state: 'primary_only' });
+    expect(
+      await identity.loadServicePolicyState(userId, applicationId, sessionId),
+    ).toMatchObject({ assurance_state: 'primary_only' });
     await runner.query(
       `UPDATE identity.application_memberships SET status = 'suspended'
        WHERE application_id = $1 AND user_id = $2`,
       [applicationId, userId],
     );
-    expect(await identity.loadServicePolicyState(userId, applicationId, sessionId))
-      .toBeNull();
+    expect(
+      await identity.loadServicePolicyState(userId, applicationId, sessionId),
+    ).toBeNull();
   });
 
   it('enforces abuse, replay, and lease ownership atomically', async () => {
@@ -104,19 +117,43 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
       expiresAt: new Date(Date.now() + 60_000),
       limit: 2,
     };
-    expect(await identity.countAbuseAttempt(attempt)).toEqual({ allowed: true, count: 1 });
-    expect(await identity.countAbuseAttempt(attempt)).toEqual({ allowed: true, count: 2 });
-    expect(await identity.countAbuseAttempt(attempt)).toEqual({ allowed: false, count: null });
+    expect(await identity.countAbuseAttempt(attempt)).toEqual({
+      allowed: true,
+      count: 1,
+    });
+    expect(await identity.countAbuseAttempt(attempt)).toEqual({
+      allowed: true,
+      count: 2,
+    });
+    expect(await identity.countAbuseAttempt(attempt)).toEqual({
+      allowed: false,
+      count: null,
+    });
 
     expect(await identity.claimMfaReplay(`probe-${suffix}`, suffix)).toBe(true);
-    expect(await identity.claimMfaReplay(`probe-${suffix}`, suffix)).toBe(false);
+    expect(await identity.claimMfaReplay(`probe-${suffix}`, suffix)).toBe(
+      false,
+    );
 
-    const lease = { resource: 'probe', key: suffix, ownerToken: `owner-${suffix}`, durationSeconds: 60 };
+    const lease = {
+      resource: 'probe',
+      key: suffix,
+      ownerToken: `owner-${suffix}`,
+      durationSeconds: 60,
+    };
     expect(await identity.acquireLease(lease)).toBe(1);
-    expect(await identity.acquireLease({ ...lease, ownerToken: `other-${suffix}` })).toBeNull();
+    expect(
+      await identity.acquireLease({ ...lease, ownerToken: `other-${suffix}` }),
+    ).toBeNull();
     expect(await identity.renewLease({ ...lease, version: 1 })).toBe(2);
     expect(await identity.renewLease({ ...lease, version: 1 })).toBeNull();
-    expect(await identity.releaseLease({ ...lease, ownerToken: `other-${suffix}`, version: 2 })).toBe(false);
+    expect(
+      await identity.releaseLease({
+        ...lease,
+        ownerToken: `other-${suffix}`,
+        version: 2,
+      }),
+    ).toBe(false);
     expect(await identity.releaseLease({ ...lease, version: 2 })).toBe(true);
   });
 
@@ -139,24 +176,50 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
     };
     expect(await delivery.enqueueSealed(input)).toBe(input.id);
     expect(await delivery.enqueueSealed(input)).toBe(input.id);
-    await expect(delivery.enqueueSealed({ ...input, templateVersion: 'v2' }))
-      .rejects.toThrow('Delivery deduplication conflict');
+    await expect(
+      delivery.enqueueSealed({ ...input, templateVersion: 'v2' }),
+    ).rejects.toThrow('Delivery deduplication conflict');
 
     const ownerToken = `owner-${suffix}`;
     const claimed = await delivery.claimDue(ownerToken);
-    expect(claimed).toMatchObject({ id: input.id, attempt_count: 1, version: 2 });
+    expect(claimed).toMatchObject({
+      id: input.id,
+      attempt_count: 1,
+      version: 2,
+    });
     expect(await delivery.claimDue(`other-${suffix}`)).toBeNull();
-    expect(await delivery.finish({ id: input.id, ownerToken, version: 1, outcome: 'accepted' }))
-      .toBe(false);
-    expect(await delivery.finish({ id: input.id, ownerToken, version: 2, outcome: 'accepted' }))
-      .toBe(true);
-    expect(await delivery.finish({ id: input.id, ownerToken, version: 2, outcome: 'accepted' }))
-      .toBe(false);
-    const rows = await runner.query(
+    expect(
+      await delivery.finish({
+        id: input.id,
+        ownerToken,
+        version: 1,
+        outcome: 'accepted',
+      }),
+    ).toBe(false);
+    expect(
+      await delivery.finish({
+        id: input.id,
+        ownerToken,
+        version: 2,
+        outcome: 'accepted',
+      }),
+    ).toBe(true);
+    expect(
+      await delivery.finish({
+        id: input.id,
+        ownerToken,
+        version: 2,
+        outcome: 'accepted',
+      }),
+    ).toBe(false);
+    const rows = (await runner.query(
       'SELECT payload_ciphertext, state FROM identity.email_deliveries WHERE id = $1',
       [input.id],
-    ) as Array<{ payload_ciphertext: Buffer | null; state: string }>;
-    expect(rows[0]).toMatchObject({ payload_ciphertext: null, state: 'accepted' });
+    )) as Array<{ payload_ciphertext: Buffer | null; state: string }>;
+    expect(rows[0]).toMatchObject({
+      payload_ciphertext: null,
+      state: 'accepted',
+    });
   });
 
   it('fences mobile exchanges and erases completed client state', async () => {
@@ -176,37 +239,99 @@ databaseDescribe('PostgreSQL persistence transitions', () => {
     expect(id).toBeTruthy();
     const transactionId = id!;
     const common = { id: transactionId, applicationId };
-    expect(await mobile.markBrowserVerified({ ...common, version: 1, nativeSessionId: 'session-probe', browserBindingHmac: suffix }))
-      .toBe(2);
-    expect(await mobile.markBrowserVerified({ ...common, version: 1, nativeSessionId: 'session-probe', browserBindingHmac: suffix }))
-      .toBeNull();
-    expect(await mobile.markCodeIssued({ ...common, version: 2, oneTimeTokenHmac: suffix })).toBe(3);
-    expect(await mobile.beginExchange({ ...common, version: 3, oneTimeTokenHmac: suffix })).toBe(4);
-    expect(await mobile.beginExchange({ ...common, version: 3, oneTimeTokenHmac: suffix })).toBeNull();
-    expect(await mobile.finishExchange({ ...common, version: 4, result: 'completed' })).toBe(true);
-    expect(await mobile.finishExchange({ ...common, version: 4, result: 'completed' })).toBe(false);
-    const rows = await runner.query(
+    expect(
+      await mobile.markBrowserVerified({
+        ...common,
+        version: 1,
+        nativeSessionId: 'session-probe',
+        browserBindingHmac: suffix,
+      }),
+    ).toBe(2);
+    expect(
+      await mobile.markBrowserVerified({
+        ...common,
+        version: 1,
+        nativeSessionId: 'session-probe',
+        browserBindingHmac: suffix,
+      }),
+    ).toBeNull();
+    expect(
+      await mobile.markCodeIssued({
+        ...common,
+        version: 2,
+        oneTimeTokenHmac: suffix,
+      }),
+    ).toBe(3);
+    expect(
+      await mobile.beginExchange({
+        ...common,
+        version: 3,
+        oneTimeTokenHmac: suffix,
+      }),
+    ).toBe(4);
+    expect(
+      await mobile.beginExchange({
+        ...common,
+        version: 3,
+        oneTimeTokenHmac: suffix,
+      }),
+    ).toBeNull();
+    expect(
+      await mobile.finishExchange({
+        ...common,
+        version: 4,
+        result: 'completed',
+      }),
+    ).toBe(true);
+    expect(
+      await mobile.finishExchange({
+        ...common,
+        version: 4,
+        result: 'completed',
+      }),
+    ).toBe(false);
+    const rows = (await runner.query(
       'SELECT client_state_ciphertext, status FROM identity.mobile_auth_transactions WHERE id = $1',
       [transactionId],
-    ) as Array<{ client_state_ciphertext: Buffer | null; status: string }>;
-    expect(rows[0]).toMatchObject({ client_state_ciphertext: null, status: 'completed' });
+    )) as Array<{ client_state_ciphertext: Buffer | null; status: string }>;
+    expect(rows[0]).toMatchObject({
+      client_state_ciphertext: null,
+      status: 'completed',
+    });
   });
 
   it('rejects conflicting administration idempotency and stale phases', async () => {
     const input = {
-      kind: 'probe', actorId: `actor-${suffix}`, applicationId,
-      idempotencyKeyHmac: `key-${suffix}`, requestFingerprint: `request-${suffix}`,
+      kind: 'probe',
+      actorId: `actor-${suffix}`,
+      applicationId,
+      idempotencyKeyHmac: `key-${suffix}`,
+      requestFingerprint: `request-${suffix}`,
       targetReference: `target-${suffix}`,
     };
     const first = await administration.begin(input);
     expect(first.created).toBe(true);
     const again = await administration.begin(input);
-    expect(again).toMatchObject({ created: false, operation: { id: first.operation.id } });
-    await expect(administration.begin({ ...input, requestFingerprint: 'different' }))
-      .rejects.toBeInstanceOf(AdminOperationConflictError);
-    expect(await administration.advance({ id: first.operation.id, from: 'pending', to: 'native_applied' }))
-      .toBe(true);
-    expect(await administration.advance({ id: first.operation.id, from: 'pending', to: 'native_applied' }))
-      .toBe(false);
+    expect(again).toMatchObject({
+      created: false,
+      operation: { id: first.operation.id },
+    });
+    await expect(
+      administration.begin({ ...input, requestFingerprint: 'different' }),
+    ).rejects.toBeInstanceOf(AdminOperationConflictError);
+    expect(
+      await administration.advance({
+        id: first.operation.id,
+        from: 'pending',
+        to: 'native_applied',
+      }),
+    ).toBe(true);
+    expect(
+      await administration.advance({
+        id: first.operation.id,
+        from: 'pending',
+        to: 'native_applied',
+      }),
+    ).toBe(false);
   });
 });

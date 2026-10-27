@@ -36,7 +36,9 @@ export class NarrowMaintenanceReads1792972800008 implements MigrationInterface {
     `);
   }
 
-  async down(): Promise<void> {
-    throw new Error('Use a reviewed forward migration for maintenance privileges');
+  down(): Promise<void> {
+    return Promise.reject(
+      new Error('Use a reviewed forward migration for maintenance privileges'),
+    );
   }
 }

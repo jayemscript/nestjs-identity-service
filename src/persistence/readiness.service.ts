@@ -33,7 +33,16 @@ export class ReadinessService {
     if (this.draining) return false;
     try {
       const [identityRows] = await Promise.all([
-        this.identity.getDataSource().query(
+        this.identity.getDataSource().query<
+          Array<{
+            schema_name: string | null;
+            applied_count: number;
+            policy_access: boolean;
+            can_create: boolean;
+            foreign_schema: boolean;
+            public_access: boolean;
+          }>
+        >(
           `SELECT current_schema() AS schema_name,
                   (SELECT count(DISTINCT name)::integer
                    FROM identity.schema_migrations
@@ -50,21 +59,19 @@ export class ReadinessService {
                     OR has_schema_privilege(current_user, 'public', 'CREATE')
                     AS public_access`,
           [REQUIRED_MIGRATIONS],
-        ) as Promise<Array<{
-          schema_name: string | null;
-          applied_count: number;
-          policy_access: boolean;
-          can_create: boolean;
-          foreign_schema: boolean;
-          public_access: boolean;
-        }>>,
+        ),
         this.native.ping(),
         this.audit.ping(),
       ]);
       const row = identityRows[0];
-      return row?.schema_name === 'identity' && row.policy_access &&
-        !row.can_create && !row.foreign_schema && !row.public_access &&
-        row.applied_count === REQUIRED_MIGRATIONS.length;
+      return (
+        row?.schema_name === 'identity' &&
+        row.policy_access &&
+        !row.can_create &&
+        !row.foreign_schema &&
+        !row.public_access &&
+        row.applied_count === REQUIRED_MIGRATIONS.length
+      );
     } catch {
       return false;
     }

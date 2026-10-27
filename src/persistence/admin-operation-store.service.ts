@@ -4,7 +4,7 @@ import { DatabaseService } from '../database/database.service.js';
 import { mutationRows } from './mutation-rows.js';
 
 export type AdminOperationPhase =
-  | 'pending' | 'native_applied' | 'policy_applied' | 'completed' | 'failed';
+  'pending' | 'native_applied' | 'policy_applied' | 'completed' | 'failed';
 
 export interface AdminOperationRecord {
   id: string;
@@ -18,7 +18,9 @@ export interface AdminOperationRecord {
 }
 
 export class AdminOperationConflictError extends Error {
-  constructor() { super('Idempotency key was used for a different operation'); }
+  constructor() {
+    super('Idempotency key was used for a different operation');
+  }
 }
 
 /** Durable phases for native/custom writes that cannot share a transaction. */
@@ -34,13 +36,18 @@ export class AdminOperationStore {
     requestFingerprint: string;
     targetReference: string;
   }): Promise<{ operation: AdminOperationRecord; created: boolean }> {
-    if (!input.kind || !input.actorId || !input.idempotencyKeyHmac ||
-        !input.requestFingerprint || !input.targetReference) {
+    if (
+      !input.kind ||
+      !input.actorId ||
+      !input.idempotencyKeyHmac ||
+      !input.requestFingerprint ||
+      !input.targetReference
+    ) {
       throw new Error('Invalid administration intent');
     }
     const source = this.database.getDataSource();
     const id = uuidv7();
-    const inserted = (await source.query(
+    const inserted = await source.query<AdminOperationRecord[]>(
       `INSERT INTO identity.admin_operations (
          id, kind, actor_id, application_id, idempotency_key_hmac,
          request_fingerprint, target_reference
@@ -48,21 +55,31 @@ export class AdminOperationStore {
        ON CONFLICT (actor_id, kind, idempotency_key_hmac) DO NOTHING
        RETURNING id, kind, actor_id, application_id, request_fingerprint,
          target_reference, phase, result_reference`,
-      [id, input.kind, input.actorId, input.applicationId ?? null,
-        input.idempotencyKeyHmac, input.requestFingerprint, input.targetReference],
-    )) as AdminOperationRecord[];
+      [
+        id,
+        input.kind,
+        input.actorId,
+        input.applicationId ?? null,
+        input.idempotencyKeyHmac,
+        input.requestFingerprint,
+        input.targetReference,
+      ],
+    );
     if (inserted[0]) return { operation: inserted[0], created: true };
-    const existing = (await source.query(
+    const existing = await source.query<AdminOperationRecord[]>(
       `SELECT id, kind, actor_id, application_id, request_fingerprint,
               target_reference, phase, result_reference
        FROM identity.admin_operations
        WHERE actor_id = $1 AND kind = $2 AND idempotency_key_hmac = $3`,
       [input.actorId, input.kind, input.idempotencyKeyHmac],
-    )) as AdminOperationRecord[];
+    );
     const operation = existing[0];
-    if (!operation || operation.request_fingerprint !== input.requestFingerprint ||
-        operation.target_reference !== input.targetReference ||
-        operation.application_id !== (input.applicationId ?? null)) {
+    if (
+      !operation ||
+      operation.request_fingerprint !== input.requestFingerprint ||
+      operation.target_reference !== input.targetReference ||
+      operation.application_id !== (input.applicationId ?? null)
+    ) {
       throw new AdminOperationConflictError();
     }
     return { operation, created: false };
@@ -84,12 +101,14 @@ export class AdminOperationStore {
     if (!valid[input.from].includes(input.to)) {
       throw new Error('Invalid administration phase transition');
     }
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `UPDATE identity.admin_operations
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.admin_operations
        SET phase = $3, result_reference = $4, updated_at = now()
        WHERE id = $1 AND phase = $2 RETURNING id`,
-      [input.id, input.from, input.to, input.resultReference ?? null],
-    ));
+        [input.id, input.from, input.to, input.resultReference ?? null],
+      ),
+    );
     return rows.length === 1;
   }
 }

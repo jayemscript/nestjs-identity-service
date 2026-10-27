@@ -8,10 +8,8 @@ import { SERVICE_ENTITIES } from './entities/index.js';
 config({ quiet: true });
 
 export const AppDataSource = new DataSource({
-  ...createTypeOrmDatabaseOptions(
-    process.env,
-    'migration',
-    SERVICE_ENTITIES,
-  ),
-  migrations: [fileURLToPath(new URL('../migrations/*.{ts,js}', import.meta.url))],
+  ...createTypeOrmDatabaseOptions(process.env, 'migration', SERVICE_ENTITIES),
+  migrations: [
+    fileURLToPath(new URL('../migrations/*.{ts,js}', import.meta.url)),
+  ],
 });

@@ -3,10 +3,13 @@ import { config as loadDotEnv } from 'dotenv';
 import pg from 'pg';
 import { createPgPoolConfig } from './database-config.js';
 
-const databaseDescribe = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
+const databaseDescribe =
+  process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 const LOCK_KEY = '4863046005709130034';
 
-function runMigrationCommand(command: 'run' | 'show'): Promise<{ code: number; output: string }> {
+function runMigrationCommand(
+  command: 'run' | 'show',
+): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
@@ -14,8 +17,12 @@ function runMigrationCommand(command: 'run' | 'show'): Promise<{ code: number; o
       { cwd: process.cwd(), env: process.env, shell: false },
     );
     let output = '';
-    child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
     child.once('error', reject);
     child.once('close', (code) => resolve({ code: code ?? 1, output }));
   });
@@ -30,7 +37,9 @@ databaseDescribe('deployment migration lock', () => {
       await client.query('SELECT pg_advisory_lock($1::bigint)', [LOCK_KEY]);
       const blocked = await runMigrationCommand('run');
       expect(blocked.code).toBe(1);
-      expect(blocked.output).toContain('Another database migration job holds the lock');
+      expect(blocked.output).toContain(
+        'Another database migration job holds the lock',
+      );
     } finally {
       await client.query('SELECT pg_advisory_unlock($1::bigint)', [LOCK_KEY]);
       client.release();
@@ -38,6 +47,8 @@ databaseDescribe('deployment migration lock', () => {
     }
     const released = await runMigrationCommand('show');
     expect(released.code).toBe(0);
-    expect(released.output).toContain('applied  MaintenanceVersionRead1792972800009');
+    expect(released.output).toContain(
+      'applied  MaintenanceVersionRead1792972800009',
+    );
   }, 30_000);
 });

@@ -1,7 +1,10 @@
 import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import pg from 'pg';
-import { createPgPoolConfig, databaseEnvFromConfigService } from '../database/database-config.js';
+import {
+  createPgPoolConfig,
+  databaseEnvFromConfigService,
+} from '../database/database-config.js';
 
 /** The native authentication library owns this pool and its auth-only search path. */
 @Injectable()
@@ -48,8 +51,14 @@ export class NativePoolService implements OnModuleInit, OnModuleDestroy {
                   AS public_access`,
       );
       const row = result.rows[0];
-      if (row?.schema_name !== 'auth' || !row.native_read || !row.native_write ||
-          row.foreign_schema || row.can_create || row.public_access) {
+      if (
+        row?.schema_name !== 'auth' ||
+        !row.native_read ||
+        !row.native_write ||
+        row.foreign_schema ||
+        row.can_create ||
+        row.public_access
+      ) {
         throw new Error('Native database privilege profile is invalid');
       }
     } finally {

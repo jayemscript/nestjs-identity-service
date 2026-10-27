@@ -2,7 +2,8 @@ import type { ConfigService } from '@nestjs/config';
 import type { PoolConfig } from 'pg';
 import type { DataSourceOptions } from 'typeorm';
 
-export type DatabaseProfile = 'auth' | 'identity' | 'audit' | 'retention' | 'migration';
+export type DatabaseProfile =
+  'auth' | 'identity' | 'audit' | 'retention' | 'migration';
 
 export interface DatabaseConnectionConfig {
   host: string;
@@ -51,7 +52,13 @@ const DATABASE_ENV_KEYS = [
 
 function required(env: Record<string, unknown>, key: string): string {
   const value = env[key];
-  if (typeof value !== 'string' || !value.trim() || /[\x00-\x1f\x7f]/.test(value)) {
+  const hasControlCharacter =
+    typeof value === 'string' &&
+    Array.from(value).some((character) => {
+      const codeUnit = character.charCodeAt(0);
+      return codeUnit < 32 || codeUnit === 127;
+    });
+  if (typeof value !== 'string' || !value.trim() || hasControlCharacter) {
     throw new Error(`${key} must be a nonempty string`);
   }
   return value;
@@ -99,14 +106,18 @@ export function parseDatabaseConfig(
     throw new Error('Production database connections require verified TLS');
   }
   const caInput = env.DB_CA_CERT;
-  const ca = sslFlag === 'true' && typeof caInput === 'string'
-    ? caInput.replace(/\\n/g, '\n')
-    : undefined;
+  const ca =
+    sslFlag === 'true' && typeof caInput === 'string'
+      ? caInput.replace(/\\n/g, '\n')
+      : undefined;
   if (sslFlag === 'true' && !ca) {
     throw new Error('DB_CA_CERT is required for verified TLS');
   }
-  if (ca && (!ca.includes('-----BEGIN CERTIFICATE-----') ||
-      !ca.includes('-----END CERTIFICATE-----'))) {
+  if (
+    ca &&
+    (!ca.includes('-----BEGIN CERTIFICATE-----') ||
+      !ca.includes('-----END CERTIFICATE-----'))
+  ) {
     throw new Error('DB_CA_CERT must contain a PEM certificate');
   }
 

@@ -4,9 +4,7 @@ import type { MigrationInterface, QueryRunner } from 'typeorm';
  * Requires the NOLOGIN privilege roles from scripts/database/bootstrap-roles.sql.
  * The migration job itself owns these schemas and every object created later.
  */
-export class CreateDatabaseFoundation1792972800001
-  implements MigrationInterface
-{
+export class CreateDatabaseFoundation1792972800001 implements MigrationInterface {
   name = 'CreateDatabaseFoundation1792972800001';
   readonly safeToRevert = false;
 
@@ -45,7 +43,9 @@ export class CreateDatabaseFoundation1792972800001
     // this migration login is not the database owner.
   }
 
-  async down(): Promise<void> {
-    throw new Error('The database foundation cannot be reverted');
+  down(): Promise<void> {
+    return Promise.reject(
+      new Error('The database foundation cannot be reverted'),
+    );
   }
 }

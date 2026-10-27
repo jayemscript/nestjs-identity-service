@@ -31,10 +31,14 @@ async function main(): Promise<void> {
   try {
     await retention.initialize();
     await verifyMaintenanceProfile(retention);
-    await retention.query('SELECT id, "userId", "expiresAt" FROM auth."session" LIMIT 0');
+    await retention.query(
+      'SELECT id, "userId", "expiresAt" FROM auth."session" LIMIT 0',
+    );
 
     for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
-      const candidates = await retention.query(
+      const candidates: AssuranceCandidate[] = await retention.query<
+        AssuranceCandidate[]
+      >(
         `SELECT session_id, user_id, version,
                 updated_at::text AS updated_at_cursor
          FROM identity.session_assurance
@@ -42,43 +46,64 @@ async function main(): Promise<void> {
            AND ($2::timestamptz IS NULL OR
                 (updated_at, session_id) > ($2::timestamptz, $3::text))
          ORDER BY updated_at, session_id LIMIT $4`,
-        [cutoff, cursor?.updated_at_cursor ?? null, cursor?.session_id ?? null, BATCH_SIZE],
-      ) as AssuranceCandidate[];
+        [
+          cutoff,
+          cursor?.updated_at_cursor ?? null,
+          cursor?.session_id ?? null,
+          BATCH_SIZE,
+        ],
+      );
       if (candidates.length === 0) break;
       scanned += candidates.length;
 
-      const native = await retention.query(
+      const native = await retention.query<
+        Array<{ id: string; user_id: string; expires_at: Date }>
+      >(
         `SELECT id, "userId" AS user_id, "expiresAt" AS expires_at
          FROM auth."session"
          WHERE id = ANY($1::text[])`,
         [candidates.map((candidate) => candidate.session_id)],
-      ) as Array<{ id: string; user_id: string; expires_at: Date }>;
+      );
       const nativeSessions = new Map(native.map((row) => [row.id, row]));
       for (const candidate of candidates) {
         const session = nativeSessions.get(candidate.session_id);
-        if (session?.user_id === candidate.user_id &&
-            session.expires_at.getTime() > cutoff.getTime()) {
+        if (
+          session &&
+          session.user_id === candidate.user_id &&
+          session.expires_at.getTime() > cutoff.getTime()
+        ) {
           continue;
         }
-        const deleted = mutationRows<{ session_id: string }>(await retention.query(
-          `DELETE FROM identity.session_assurance
+        const deleted = mutationRows<{ session_id: string }>(
+          await retention.query(
+            `DELETE FROM identity.session_assurance
            WHERE session_id = $1 AND user_id = $2 AND version = $3
              AND updated_at < $4
            RETURNING session_id`,
-          [candidate.session_id, candidate.user_id, candidate.version, cutoff],
-        ));
+            [
+              candidate.session_id,
+              candidate.user_id,
+              candidate.version,
+              cutoff,
+            ],
+          ),
+        );
         removed += deleted.length;
       }
       cursor = candidates.at(-1)!;
       if (candidates.length < BATCH_SIZE) break;
     }
-    console.info(`old assurance rows scanned: ${scanned}; stale assurance rows removed: ${removed}`);
+    console.info(
+      `old assurance rows scanned: ${scanned}; stale assurance rows removed: ${removed}`,
+    );
   } finally {
     if (retention.isInitialized) await retention.destroy();
   }
 }
 
 main().catch(() => {
-  console.error('Orphan reconciliation failed; inspect restricted operational diagnostics');
+  console.error(
+    'Orphan reconciliation failed; inspect restricted operational diagnostics',
+  );
   process.exitCode = 1;
 });

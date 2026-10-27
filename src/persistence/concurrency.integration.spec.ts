@@ -10,19 +10,25 @@ import { DeliveryQueueStore } from './delivery-queue-store.service.js';
 import { IdentityRepository } from './identity-repository.service.js';
 import { MobileTransactionStore } from './mobile-transaction-store.service.js';
 
-const databaseDescribe = process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
+const databaseDescribe =
+  process.env.RUN_DB_INTEGRATION === '1' ? describe : describe.skip;
 
 function transactionBoundDatabase(runner: QueryRunner): DatabaseService {
   return new DatabaseService({
-    query: (sql: string, parameters?: unknown[]) => runner.query(sql, parameters),
+    query: (sql: string, parameters?: unknown[]) =>
+      runner.query(sql, parameters),
   } as unknown as DataSource);
 }
 
 databaseDescribe('PostgreSQL competing persistence claims', () => {
   it('permits one owner on separate connections for policy edits, intents, leases, mail, and mobile exchange', async () => {
     loadDotEnv({ quiet: true });
-    const sourceA = new DataSource(createTypeOrmDatabaseOptions(process.env, 'identity', []));
-    const sourceB = new DataSource(createTypeOrmDatabaseOptions(process.env, 'identity', []));
+    const sourceA = new DataSource(
+      createTypeOrmDatabaseOptions(process.env, 'identity', []),
+    );
+    const sourceB = new DataSource(
+      createTypeOrmDatabaseOptions(process.env, 'identity', []),
+    );
     let runnerA: QueryRunner | undefined;
     let runnerB: QueryRunner | undefined;
     const applicationId = uuidv7();
@@ -40,17 +46,31 @@ databaseDescribe('PostgreSQL competing persistence claims', () => {
       runnerB = sourceB.createQueryRunner();
       await Promise.all([runnerA.connect(), runnerB.connect()]);
       const [pidA, pidB] = await Promise.all([
-        runnerA.query('SELECT pg_backend_pid() AS pid') as Promise<Array<{ pid: number }>>,
-        runnerB.query('SELECT pg_backend_pid() AS pid') as Promise<Array<{ pid: number }>>,
+        runnerA.query('SELECT pg_backend_pid() AS pid') as Promise<
+          Array<{ pid: number }>
+        >,
+        runnerB.query('SELECT pg_backend_pid() AS pid') as Promise<
+          Array<{ pid: number }>
+        >,
       ]);
       expect(pidA[0].pid).not.toBe(pidB[0].pid);
 
-      const identityA = new IdentityRepository(transactionBoundDatabase(runnerA));
-      const identityB = new IdentityRepository(transactionBoundDatabase(runnerB));
-      const leaseA = { resource: 'concurrency-probe', key: suffix, ownerToken: `owner-a-${suffix}`, durationSeconds: 60 };
+      const identityA = new IdentityRepository(
+        transactionBoundDatabase(runnerA),
+      );
+      const identityB = new IdentityRepository(
+        transactionBoundDatabase(runnerB),
+      );
+      const leaseA = {
+        resource: 'concurrency-probe',
+        key: suffix,
+        ownerToken: `owner-a-${suffix}`,
+        durationSeconds: 60,
+      };
       const leaseB = { ...leaseA, ownerToken: `owner-b-${suffix}` };
       const leaseClaims = await Promise.all([
-        identityA.acquireLease(leaseA), identityB.acquireLease(leaseB),
+        identityA.acquireLease(leaseA),
+        identityB.acquireLease(leaseB),
       ]);
       expect(leaseClaims.filter((value) => value === 1)).toHaveLength(1);
       expect(leaseClaims.filter((value) => value === null)).toHaveLength(1);
@@ -84,8 +104,12 @@ databaseDescribe('PostgreSQL competing persistence claims', () => {
         [sessionId, userId, applicationId],
       );
       const assuranceInput = {
-        sessionId, userId, applicationId, version: 1,
-        securityEpoch: '1', mfaMethod: 'totp' as const,
+        sessionId,
+        userId,
+        applicationId,
+        version: 1,
+        securityEpoch: '1',
+        mfaMethod: 'totp' as const,
       };
       const assuranceClaims = await Promise.all([
         identityA.promoteAssuranceAfterFactor(assuranceInput),
@@ -96,11 +120,21 @@ databaseDescribe('PostgreSQL competing persistence claims', () => {
 
       const membershipInput = { applicationId, userId, version: 1 };
       const membershipClaims = await Promise.all([
-        identityA.updateMembership({ ...membershipInput, role: 'app_admin', status: 'active' }),
-        identityB.updateMembership({ ...membershipInput, role: 'member', status: 'suspended' }),
+        identityA.updateMembership({
+          ...membershipInput,
+          role: 'app_admin',
+          status: 'active',
+        }),
+        identityB.updateMembership({
+          ...membershipInput,
+          role: 'member',
+          status: 'suspended',
+        }),
       ]);
       expect(membershipClaims.filter((value) => value === 2)).toHaveLength(1);
-      expect(membershipClaims.filter((value) => value === null)).toHaveLength(1);
+      expect(membershipClaims.filter((value) => value === null)).toHaveLength(
+        1,
+      );
       await sourceA.query(
         `INSERT INTO identity.session_assurance
           (session_id, user_id, application_id, security_epoch,
@@ -108,77 +142,139 @@ databaseDescribe('PostgreSQL competing persistence claims', () => {
          VALUES ($1, $2, $3, 1, 'password', now() + interval '1 hour')`,
         [pendingSessionId, userId, applicationId],
       );
-      expect(await identityA.updateMembership({
-        ...membershipInput, version: 2, role: 'member', status: 'suspended',
-      })).toBe(3);
-      expect(await identityA.promoteAssuranceAfterFactor({
-        ...assuranceInput, sessionId: pendingSessionId,
-      })).toBeNull();
+      expect(
+        await identityA.updateMembership({
+          ...membershipInput,
+          version: 2,
+          role: 'member',
+          status: 'suspended',
+        }),
+      ).toBe(3);
+      expect(
+        await identityA.promoteAssuranceAfterFactor({
+          ...assuranceInput,
+          sessionId: pendingSessionId,
+        }),
+      ).toBeNull();
 
       const adminA = new AdminOperationStore(transactionBoundDatabase(runnerA));
       const adminB = new AdminOperationStore(transactionBoundDatabase(runnerB));
       const intent = {
-        kind: 'bootstrap', actorId: userId, applicationId,
+        kind: 'bootstrap',
+        actorId: userId,
+        applicationId,
         idempotencyKeyHmac: `intent-${suffix}`,
         requestFingerprint: `fingerprint-${suffix}`,
         targetReference: `target-${suffix}`,
       };
-      const intents = await Promise.all([adminA.begin(intent), adminB.begin(intent)]);
+      const intents = await Promise.all([
+        adminA.begin(intent),
+        adminB.begin(intent),
+      ]);
       expect(intents.filter((result) => result.created)).toHaveLength(1);
       expect(intents[0].operation.id).toBe(intents[1].operation.id);
 
-      const deliveryA = new DeliveryQueueStore(transactionBoundDatabase(runnerA));
-      const deliveryB = new DeliveryQueueStore(transactionBoundDatabase(runnerB));
+      const deliveryA = new DeliveryQueueStore(
+        transactionBoundDatabase(runnerA),
+      );
+      const deliveryB = new DeliveryQueueStore(
+        transactionBoundDatabase(runnerB),
+      );
       await deliveryA.enqueueSealed({
-        id: deliveryId, purpose: 'verify_email', templateVersion: 'v1', applicationId,
+        id: deliveryId,
+        purpose: 'verify_email',
+        templateVersion: 'v1',
+        applicationId,
         sealed: {
-          ciphertext: Buffer.from('sealed-probe'), iv: randomBytes(12),
-          tag: randomBytes(16), keyId: 'probe-key',
+          ciphertext: Buffer.from('sealed-probe'),
+          iv: randomBytes(12),
+          tag: randomBytes(16),
+          keyId: 'probe-key',
         },
-        deduplicationHmac: `dedup-${suffix}`, messageId: `message-${suffix}`,
+        deduplicationHmac: `dedup-${suffix}`,
+        messageId: `message-${suffix}`,
         challengeExpiresAt: new Date(Date.now() + 600_000),
         notBefore: new Date(Date.now() - 1_000),
       });
       const ownerA = `mail-a-${suffix}`;
       const ownerB = `mail-b-${suffix}`;
       const deliveryClaims = await Promise.all([
-        deliveryA.claimDue(ownerA), deliveryB.claimDue(ownerB),
+        deliveryA.claimDue(ownerA),
+        deliveryB.claimDue(ownerB),
       ]);
-      const winners = deliveryClaims.filter((value) => value?.id === deliveryId);
+      const winners = deliveryClaims.filter(
+        (value) => value?.id === deliveryId,
+      );
       expect(winners).toHaveLength(1);
       expect(deliveryClaims.filter((value) => value === null)).toHaveLength(1);
       expect(winners[0]).toMatchObject({ attempt_count: 1, version: 2 });
       const winnerOwner = deliveryClaims[0] ? ownerA : ownerB;
-      expect(await deliveryA.finish({
-        id: deliveryId, ownerToken: winnerOwner, version: 2, outcome: 'accepted',
-      })).toBe(true);
+      expect(
+        await deliveryA.finish({
+          id: deliveryId,
+          ownerToken: winnerOwner,
+          version: 2,
+          outcome: 'accepted',
+        }),
+      ).toBe(true);
 
-      const mobileA = new MobileTransactionStore(transactionBoundDatabase(runnerA));
-      const mobileB = new MobileTransactionStore(transactionBoundDatabase(runnerB));
+      const mobileA = new MobileTransactionStore(
+        transactionBoundDatabase(runnerA),
+      );
+      const mobileB = new MobileTransactionStore(
+        transactionBoundDatabase(runnerB),
+      );
       mobileId = await mobileA.create({
-        applicationId, returnUri, platform: 'ios', codeChallenge: 'a'.repeat(43),
+        applicationId,
+        returnUri,
+        platform: 'ios',
+        codeChallenge: 'a'.repeat(43),
         clientStateHash: suffix,
         clientState: {
-          ciphertext: Buffer.from('sealed-state'), iv: randomBytes(12),
-          tag: randomBytes(16), keyId: 'probe-key',
+          ciphertext: Buffer.from('sealed-state'),
+          iv: randomBytes(12),
+          tag: randomBytes(16),
+          keyId: 'probe-key',
         },
       });
       expect(mobileId).toBeTruthy();
       const common = { id: mobileId!, applicationId };
-      expect(await mobileA.markBrowserVerified({
-        ...common, version: 1, nativeSessionId: 'session-probe', browserBindingHmac: suffix,
-      })).toBe(2);
-      expect(await mobileA.markCodeIssued({
-        ...common, version: 2, oneTimeTokenHmac: suffix,
-      })).toBe(3);
+      expect(
+        await mobileA.markBrowserVerified({
+          ...common,
+          version: 1,
+          nativeSessionId: 'session-probe',
+          browserBindingHmac: suffix,
+        }),
+      ).toBe(2);
+      expect(
+        await mobileA.markCodeIssued({
+          ...common,
+          version: 2,
+          oneTimeTokenHmac: suffix,
+        }),
+      ).toBe(3);
       const exchanges = await Promise.all([
-        mobileA.beginExchange({ ...common, version: 3, oneTimeTokenHmac: suffix }),
-        mobileB.beginExchange({ ...common, version: 3, oneTimeTokenHmac: suffix }),
+        mobileA.beginExchange({
+          ...common,
+          version: 3,
+          oneTimeTokenHmac: suffix,
+        }),
+        mobileB.beginExchange({
+          ...common,
+          version: 3,
+          oneTimeTokenHmac: suffix,
+        }),
       ]);
       expect(exchanges.filter((value) => value === 4)).toHaveLength(1);
       expect(exchanges.filter((value) => value === null)).toHaveLength(1);
-      expect(await mobileA.finishExchange({ ...common, version: 4, result: 'completed' }))
-        .toBe(true);
+      expect(
+        await mobileA.finishExchange({
+          ...common,
+          version: 4,
+          result: 'completed',
+        }),
+      ).toBe(true);
     } finally {
       if (sourceA.isInitialized) {
         await sourceA.query(
@@ -193,13 +289,27 @@ databaseDescribe('PostgreSQL competing persistence claims', () => {
           'DELETE FROM identity.application_memberships WHERE application_id = $1 AND user_id = $2',
           [applicationId, userId],
         );
-        await sourceA.query('DELETE FROM identity.account_policies WHERE user_id = $1', [userId]);
-        await sourceA.query('DELETE FROM identity.email_deliveries WHERE id = $1', [deliveryId]);
+        await sourceA.query(
+          'DELETE FROM identity.account_policies WHERE user_id = $1',
+          [userId],
+        );
+        await sourceA.query(
+          'DELETE FROM identity.email_deliveries WHERE id = $1',
+          [deliveryId],
+        );
         if (mobileId) {
-          await sourceA.query('DELETE FROM identity.mobile_auth_transactions WHERE id = $1', [mobileId]);
+          await sourceA.query(
+            'DELETE FROM identity.mobile_auth_transactions WHERE id = $1',
+            [mobileId],
+          );
         }
-        await sourceA.query('DELETE FROM identity.mobile_clients WHERE application_id = $1', [applicationId]);
-        await sourceA.query('DELETE FROM identity.applications WHERE id = $1', [applicationId]);
+        await sourceA.query(
+          'DELETE FROM identity.mobile_clients WHERE application_id = $1',
+          [applicationId],
+        );
+        await sourceA.query('DELETE FROM identity.applications WHERE id = $1', [
+          applicationId,
+        ]);
         await sourceA.query(
           'DELETE FROM identity.operation_leases WHERE resource = $1 AND lease_key = $2',
           ['concurrency-probe', suffix],

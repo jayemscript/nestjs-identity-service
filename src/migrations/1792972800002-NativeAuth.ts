@@ -47,7 +47,11 @@ export class NativeAuth1792972800002 implements MigrationInterface {
     `);
   }
 
-  async down(): Promise<void> {
-    throw new Error('Native authentication data requires a reviewed forward repair');
+  down(): Promise<void> {
+    return Promise.reject(
+      new Error(
+        'Native authentication data requires a reviewed forward repair',
+      ),
+    );
   }
 }

@@ -5,21 +5,32 @@ import { config as loadDotEnv } from 'dotenv';
 import pg from 'pg';
 import { DataSource } from 'typeorm';
 import { v7 as uuidv7 } from 'uuid';
-import { createPgPoolConfig, createTypeOrmDatabaseOptions } from '../database/database-config.js';
+import {
+  createPgPoolConfig,
+  createTypeOrmDatabaseOptions,
+} from '../database/database-config.js';
 
-const maintenanceDescribe = process.env.RUN_DB_MAINTENANCE_INTEGRATION === '1'
-  ? describe : describe.skip;
+const maintenanceDescribe =
+  process.env.RUN_DB_MAINTENANCE_INTEGRATION === '1' ? describe : describe.skip;
 
 function runReconciliation(): Promise<{ code: number; output: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--loader', 'ts-node/esm', 'src/persistence/orphan-reconciliation-cli.ts'],
+      [
+        '--loader',
+        'ts-node/esm',
+        'src/persistence/orphan-reconciliation-cli.ts',
+      ],
       { cwd: process.cwd(), env: process.env, shell: false },
     );
     let output = '';
-    child.stdout.on('data', (chunk: Buffer) => { output += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { output += chunk.toString(); });
+    child.stdout.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
     child.once('error', reject);
     child.once('close', (code) => resolve({ code: code ?? 1, output }));
   });
@@ -28,7 +39,9 @@ function runReconciliation(): Promise<{ code: number; output: string }> {
 maintenanceDescribe('native session orphan reconciliation', () => {
   it('removes absent and expired assurance while preserving a live native session', async () => {
     loadDotEnv({ quiet: true });
-    const source = new DataSource(createTypeOrmDatabaseOptions(process.env, 'identity', []));
+    const source = new DataSource(
+      createTypeOrmDatabaseOptions(process.env, 'identity', []),
+    );
     const auth = new pg.Pool(createPgPoolConfig(process.env, 'auth'));
     const applicationId = uuidv7();
     const suffix = randomBytes(24).toString('base64url');
@@ -41,7 +54,11 @@ maintenanceDescribe('native session orphan reconciliation', () => {
         `INSERT INTO identity.applications
           (id, slug, name, public_origin, status)
          VALUES ($1, $2, 'Orphan probe', $3, 'active')`,
-        [applicationId, `probe-${applicationId}`, `https://auth-${applicationId}.example`],
+        [
+          applicationId,
+          `probe-${applicationId}`,
+          `https://auth-${applicationId}.example`,
+        ],
       );
       await source.query(
         `INSERT INTO identity.session_assurance
@@ -62,8 +79,13 @@ maintenanceDescribe('native session orphan reconciliation', () => {
            ("id", "expiresAt", "token", "updatedAt", "userId")
          VALUES ($1, now() - interval '2 days', $2, now() - interval '2 days', $3),
                 ($4, now() + interval '1 day', $5, now(), $3)`,
-        [expiredSessionId, `token-expired-${suffix}`, userId,
-          liveSessionId, `token-live-${suffix}`],
+        [
+          expiredSessionId,
+          `token-expired-${suffix}`,
+          userId,
+          liveSessionId,
+          `token-live-${suffix}`,
+        ],
       );
       await source.query(
         `INSERT INTO identity.session_assurance
@@ -81,18 +103,26 @@ maintenanceDescribe('native session orphan reconciliation', () => {
       const removed = /stale assurance rows removed: (\d+)/.exec(result.output);
       expect(removed).not.toBeNull();
       expect(Number(removed?.[1])).toBeGreaterThanOrEqual(502);
-      const rows = await source.query(
+      const rows = await source.query<Array<{ session_id: string }>>(
         'SELECT session_id FROM identity.session_assurance WHERE application_id = $1',
         [applicationId],
-      ) as Array<{ session_id: string }>;
+      );
       expect(rows).toEqual([{ session_id: liveSessionId }]);
     } finally {
       if (source.isInitialized) {
-        await source.query('DELETE FROM identity.session_assurance WHERE application_id = $1', [applicationId]);
-        await source.query('DELETE FROM identity.applications WHERE id = $1', [applicationId]);
+        await source.query(
+          'DELETE FROM identity.session_assurance WHERE application_id = $1',
+          [applicationId],
+        );
+        await source.query('DELETE FROM identity.applications WHERE id = $1', [
+          applicationId,
+        ]);
         await source.destroy();
       }
-      await auth.query('DELETE FROM auth."session" WHERE id = ANY($1::text[])', [[expiredSessionId, liveSessionId]]);
+      await auth.query(
+        'DELETE FROM auth."session" WHERE id = ANY($1::text[])',
+        [[expiredSessionId, liveSessionId]],
+      );
       await auth.query('DELETE FROM auth."user" WHERE id = $1', [userId]);
       await auth.end();
     }

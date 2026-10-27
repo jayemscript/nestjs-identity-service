@@ -25,20 +25,29 @@ describe('database connection profiles', () => {
 
   it('uses fixed schema-specific logins, budgets, and search paths', () => {
     expect(parseDatabaseConfig(valid, 'auth')).toMatchObject({
-      username: 'auth_login', schema: 'auth', poolMax: 5,
+      username: 'auth_login',
+      schema: 'auth',
+      poolMax: 5,
     });
     expect(parseDatabaseConfig(valid, 'audit')).toMatchObject({
-      username: 'audit_login', schema: 'audit', poolMax: 2,
+      username: 'audit_login',
+      schema: 'audit',
+      poolMax: 2,
     });
     expect(parseDatabaseConfig(valid, 'retention')).toMatchObject({
-      username: 'retention_login', schema: 'identity', poolMax: 1,
+      username: 'retention_login',
+      schema: 'identity',
+      poolMax: 1,
     });
     const native = createPgPoolConfig(valid, 'auth');
     expect(native.options).toContain('search_path=auth');
     expect(native.options).not.toContain('public');
     const service = createTypeOrmDatabaseOptions(valid, 'identity', []);
     expect(service).toMatchObject({
-      schema: 'identity', synchronize: false, migrationsRun: false, poolSize: 5,
+      schema: 'identity',
+      synchronize: false,
+      migrationsRun: false,
+      poolSize: 5,
     });
   });
 
@@ -49,12 +58,15 @@ describe('database connection profiles', () => {
     [{ ...valid, DB_SSL: 'true' }, 'DB_CA_CERT'],
     [{ ...valid, AUTH_DB_SCHEMA: 'public' }, 'AUTH_DB_SCHEMA'],
     [{ ...valid, AUTH_DB_PASS: '' }, 'AUTH_DB_PASS'],
-  ])('rejects unsafe configuration without exposing credentials', (env, errorPart) => {
-    expect(() => parseDatabaseConfig(env, 'auth')).toThrow(errorPart);
-    try {
-      parseDatabaseConfig(env, 'auth');
-    } catch (error) {
-      expect(String(error)).not.toContain('private-auth-value');
-    }
-  });
+  ])(
+    'rejects unsafe configuration without exposing credentials',
+    (env, errorPart) => {
+      expect(() => parseDatabaseConfig(env, 'auth')).toThrow(errorPart);
+      try {
+        parseDatabaseConfig(env, 'auth');
+      } catch (error) {
+        expect(String(error)).not.toContain('private-auth-value');
+      }
+    },
+  );
 });

@@ -29,8 +29,10 @@ export class IdentityRepository {
     applicationId: string,
     sessionId: string,
   ): Promise<ServicePolicyState | null> {
-    const rows = (await this.database.getDataSource().query(
-      `SELECT p.user_id, a.id AS application_id, a.version AS application_version,
+    const rows = await this.database
+      .getDataSource()
+      .query<ServicePolicyState[]>(
+        `SELECT p.user_id, a.id AS application_id, a.version AS application_version,
               m.role AS membership_role, m.version AS membership_version,
               p.security_epoch, p.kind AS account_kind,
               s.state AS assurance_state, s.version AS assurance_version,
@@ -43,8 +45,8 @@ export class IdentityRepository {
        WHERE p.user_id = $1 AND a.id = $2 AND s.session_id = $3
          AND p.lifecycle = 'active' AND p.bootstrap_state = 'active'
          AND a.status = 'active' AND m.status = 'active'`,
-      [userId, applicationId, sessionId],
-    )) as ServicePolicyState[];
+        [userId, applicationId, sessionId],
+      );
     return rows[0] ?? null;
   }
 
@@ -56,19 +58,31 @@ export class IdentityRepository {
     role: 'member' | 'app_admin';
     status: 'active' | 'suspended';
   }): Promise<number | null> {
-    if (!input.applicationId || !input.userId ||
-        !Number.isInteger(input.version) || input.version < 1 ||
-        !['member', 'app_admin'].includes(input.role) ||
-        !['active', 'suspended'].includes(input.status)) {
+    if (
+      !input.applicationId ||
+      !input.userId ||
+      !Number.isInteger(input.version) ||
+      input.version < 1 ||
+      !['member', 'app_admin'].includes(input.role) ||
+      !['active', 'suspended'].includes(input.status)
+    ) {
       throw new Error('Invalid membership update');
     }
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.application_memberships
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.application_memberships
        SET role = $4, status = $5, version = version + 1, updated_at = now()
        WHERE application_id = $1 AND user_id = $2 AND version = $3
        RETURNING version`,
-      [input.applicationId, input.userId, input.version, input.role, input.status],
-    ));
+        [
+          input.applicationId,
+          input.userId,
+          input.version,
+          input.role,
+          input.status,
+        ],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -81,15 +95,21 @@ export class IdentityRepository {
     securityEpoch: string;
     mfaMethod: 'totp' | 'recovery_code';
   }): Promise<number | null> {
-    if (!input.sessionId || !input.userId || !input.applicationId ||
-        !Number.isInteger(input.version) || input.version < 1 ||
-        !/^[1-9]\d{0,18}$/.test(input.securityEpoch) ||
-        BigInt(input.securityEpoch) > 9_223_372_036_854_775_807n ||
-        !['totp', 'recovery_code'].includes(input.mfaMethod)) {
+    if (
+      !input.sessionId ||
+      !input.userId ||
+      !input.applicationId ||
+      !Number.isInteger(input.version) ||
+      input.version < 1 ||
+      !/^[1-9]\d{0,18}$/.test(input.securityEpoch) ||
+      BigInt(input.securityEpoch) > 9_223_372_036_854_775_807n ||
+      !['totp', 'recovery_code'].includes(input.mfaMethod)
+    ) {
       throw new Error('Invalid assurance promotion');
     }
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.session_assurance s
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.session_assurance s
        SET state = 'verified', mfa_method = $6, mfa_verified_at = now(),
            version = s.version + 1, updated_at = now()
        WHERE s.session_id = $1 AND s.user_id = $2 AND s.application_id = $3
@@ -105,9 +125,16 @@ export class IdentityRepository {
              AND a.status = 'active'
          )
        RETURNING s.version`,
-      [input.sessionId, input.userId, input.applicationId, input.version,
-        input.securityEpoch, input.mfaMethod],
-    ));
+        [
+          input.sessionId,
+          input.userId,
+          input.applicationId,
+          input.version,
+          input.securityEpoch,
+          input.mfaMethod,
+        ],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -125,7 +152,11 @@ export class IdentityRepository {
     if (!/^[A-Za-z0-9_-]{32,256}$/.test(input.subjectHmac)) {
       throw new Error('Invalid abuse subject HMAC');
     }
-    if (!Number.isInteger(input.limit) || input.limit < 1 || input.limit > 100_000) {
+    if (
+      !Number.isInteger(input.limit) ||
+      input.limit < 1 ||
+      input.limit > 100_000
+    ) {
       throw new Error('Invalid abuse limit');
     }
     const now = Date.now();
@@ -138,8 +169,10 @@ export class IdentityRepository {
     ) {
       throw new Error('Invalid abuse window');
     }
-    const rows = (await this.database.getDataSource().query(
-      `INSERT INTO identity.abuse_windows
+    const rows = await this.database
+      .getDataSource()
+      .query<Array<{ count: number }>>(
+        `INSERT INTO identity.abuse_windows
          (scope, subject_hmac, window_start, count, expires_at)
        VALUES ($1, $2, $3, 1, $4)
        ON CONFLICT (scope, subject_hmac, window_start) DO UPDATE
@@ -150,25 +183,36 @@ export class IdentityRepository {
        WHERE identity.abuse_windows.expires_at <= now()
           OR identity.abuse_windows.count < $5
        RETURNING count`,
-      [input.scope, input.subjectHmac, input.windowStart, input.expiresAt, input.limit],
-    )) as { count: number }[];
+        [
+          input.scope,
+          input.subjectHmac,
+          input.windowStart,
+          input.expiresAt,
+          input.limit,
+        ],
+      );
     return { allowed: rows.length === 1, count: rows[0]?.count ?? null };
   }
 
   /** Call only after native TOTP verification succeeds; an unexpired claim wins. */
-  async claimMfaReplay(userId: string, codeFingerprint: string): Promise<boolean> {
+  async claimMfaReplay(
+    userId: string,
+    codeFingerprint: string,
+  ): Promise<boolean> {
     if (!userId || !/^[A-Za-z0-9_-]{32,256}$/.test(codeFingerprint)) {
       throw new Error('Invalid MFA replay claim');
     }
-    const rows = (await this.database.getDataSource().query(
-      `INSERT INTO identity.mfa_replay_claims (user_id, code_fingerprint, expires_at)
+    const rows = await this.database
+      .getDataSource()
+      .query<Array<{ user_id: string }>>(
+        `INSERT INTO identity.mfa_replay_claims (user_id, code_fingerprint, expires_at)
        VALUES ($1, $2, now() + interval '90 seconds')
        ON CONFLICT (user_id, code_fingerprint) DO UPDATE
          SET expires_at = EXCLUDED.expires_at
        WHERE identity.mfa_replay_claims.expires_at <= now()
        RETURNING user_id`,
-      [userId, codeFingerprint],
-    )) as { user_id: string }[];
+        [userId, codeFingerprint],
+      );
     return rows.length === 1;
   }
 
@@ -178,13 +222,20 @@ export class IdentityRepository {
     ownerToken: string;
     durationSeconds: number;
   }): Promise<number | null> {
-    if (!input.resource || !input.key || !input.ownerToken ||
-        !Number.isInteger(input.durationSeconds) || input.durationSeconds < 1 ||
-        input.durationSeconds > 600) {
+    if (
+      !input.resource ||
+      !input.key ||
+      !input.ownerToken ||
+      !Number.isInteger(input.durationSeconds) ||
+      input.durationSeconds < 1 ||
+      input.durationSeconds > 600
+    ) {
       throw new Error('Invalid operation lease');
     }
-    const rows = (await this.database.getDataSource().query(
-      `INSERT INTO identity.operation_leases
+    const rows = await this.database
+      .getDataSource()
+      .query<Array<{ version: number }>>(
+        `INSERT INTO identity.operation_leases
          (resource, lease_key, owner_token, lease_until, version)
        VALUES ($1, $2, $3, now() + $4 * interval '1 second', 1)
        ON CONFLICT (resource, lease_key) DO UPDATE
@@ -193,8 +244,8 @@ export class IdentityRepository {
              version = identity.operation_leases.version + 1
        WHERE identity.operation_leases.lease_until <= now()
        RETURNING version`,
-      [input.resource, input.key, input.ownerToken, input.durationSeconds],
-    )) as { version: number }[];
+        [input.resource, input.key, input.ownerToken, input.durationSeconds],
+      );
     return rows[0]?.version ?? null;
   }
 
@@ -205,19 +256,31 @@ export class IdentityRepository {
     version: number;
     durationSeconds: number;
   }): Promise<number | null> {
-    if (!Number.isInteger(input.version) || input.version < 1 ||
-        !Number.isInteger(input.durationSeconds) || input.durationSeconds < 1 ||
-        input.durationSeconds > 600) {
+    if (
+      !Number.isInteger(input.version) ||
+      input.version < 1 ||
+      !Number.isInteger(input.durationSeconds) ||
+      input.durationSeconds < 1 ||
+      input.durationSeconds > 600
+    ) {
       throw new Error('Invalid operation lease renewal');
     }
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.operation_leases
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.operation_leases
        SET lease_until = now() + $5 * interval '1 second', version = version + 1
        WHERE resource = $1 AND lease_key = $2 AND owner_token = $3
          AND version = $4 AND lease_until > now()
        RETURNING version`,
-      [input.resource, input.key, input.ownerToken, input.version, input.durationSeconds],
-    ));
+        [
+          input.resource,
+          input.key,
+          input.ownerToken,
+          input.version,
+          input.durationSeconds,
+        ],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -227,12 +290,14 @@ export class IdentityRepository {
     ownerToken: string;
     version: number;
   }): Promise<boolean> {
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `DELETE FROM identity.operation_leases
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `DELETE FROM identity.operation_leases
        WHERE resource = $1 AND lease_key = $2 AND owner_token = $3 AND version = $4
        RETURNING version`,
-      [input.resource, input.key, input.ownerToken, input.version],
-    ));
+        [input.resource, input.key, input.ownerToken, input.version],
+      ),
+    );
     return rows.length === 1;
   }
 }

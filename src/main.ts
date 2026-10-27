@@ -12,8 +12,11 @@ async function drainHttp(server: Server): Promise<void> {
   let timeout: NodeJS.Timeout | undefined;
   try {
     await new Promise<void>((resolve, reject) => {
-      server.close((error) => error ? reject(error) : resolve());
-      timeout = setTimeout(() => server.closeAllConnections(), DRAIN_TIMEOUT_MS);
+      server.close((error) => (error ? reject(error) : resolve()));
+      timeout = setTimeout(
+        () => server.closeAllConnections(),
+        DRAIN_TIMEOUT_MS,
+      );
     });
   } finally {
     if (timeout) clearTimeout(timeout);
@@ -43,12 +46,20 @@ async function bootstrap(): Promise<void> {
         await drainHttp(app.getHttpServer() as Server);
         await app.close();
       } catch {
-        Logger.error('Identity service shutdown failed', undefined, 'Bootstrap');
+        Logger.error(
+          'Identity service shutdown failed',
+          undefined,
+          'Bootstrap',
+        );
         process.exitCode = 1;
       }
     };
-    process.once('SIGINT', () => { void shutdown(); });
-    process.once('SIGTERM', () => { void shutdown(); });
+    process.once('SIGINT', () => {
+      void shutdown();
+    });
+    process.once('SIGTERM', () => {
+      void shutdown();
+    });
   } catch (error) {
     await app.close();
     throw error;

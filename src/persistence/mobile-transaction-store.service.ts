@@ -23,13 +23,17 @@ export class MobileTransactionStore {
     clientStateHash: string;
     clientState: MobileClientStateEnvelope;
   }): Promise<string | null> {
-    if (!/^[A-Za-z0-9_-]{43}$/.test(input.codeChallenge) ||
-        input.clientState.iv.length !== 12 || input.clientState.tag.length !== 16 ||
-        input.clientState.ciphertext.length === 0 || !input.clientState.keyId) {
+    if (
+      !/^[A-Za-z0-9_-]{43}$/.test(input.codeChallenge) ||
+      input.clientState.iv.length !== 12 ||
+      input.clientState.tag.length !== 16 ||
+      input.clientState.ciphertext.length === 0 ||
+      !input.clientState.keyId
+    ) {
       throw new Error('Invalid mobile transaction');
     }
     const id = uuidv7();
-    const rows = (await this.database.getDataSource().query(
+    const rows = await this.database.getDataSource().query<{ id: string }[]>(
       `INSERT INTO identity.mobile_auth_transactions (
          id, application_id, return_uri, platform, code_challenge,
          client_state_hash, client_state_ciphertext, client_state_iv,
@@ -46,10 +50,19 @@ export class MobileTransactionStore {
          AND (($4 = 'ios' AND m.ios_bundle_id IS NOT NULL)
               OR ($4 = 'android' AND m.android_package_name IS NOT NULL))
        RETURNING id`,
-      [id, input.applicationId, input.returnUri, input.platform,
-        input.codeChallenge, input.clientStateHash, input.clientState.ciphertext,
-        input.clientState.iv, input.clientState.tag, input.clientState.keyId],
-    )) as { id: string }[];
+      [
+        id,
+        input.applicationId,
+        input.returnUri,
+        input.platform,
+        input.codeChallenge,
+        input.clientStateHash,
+        input.clientState.ciphertext,
+        input.clientState.iv,
+        input.clientState.tag,
+        input.clientState.keyId,
+      ],
+    );
     return rows[0]?.id ?? null;
   }
 
@@ -60,16 +73,23 @@ export class MobileTransactionStore {
     nativeSessionId: string;
     browserBindingHmac: string;
   }): Promise<number | null> {
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.mobile_auth_transactions
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.mobile_auth_transactions
        SET status = 'browser_verified', native_session_id = $4,
            browser_binding_hmac = $5, version = version + 1, updated_at = now()
        WHERE id = $1 AND application_id = $2 AND version = $3
          AND status = 'pending' AND expires_at > now()
        RETURNING version`,
-      [input.id, input.applicationId, input.version,
-        input.nativeSessionId, input.browserBindingHmac],
-    ));
+        [
+          input.id,
+          input.applicationId,
+          input.version,
+          input.nativeSessionId,
+          input.browserBindingHmac,
+        ],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -79,16 +99,18 @@ export class MobileTransactionStore {
     version: number;
     oneTimeTokenHmac: string;
   }): Promise<number | null> {
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.mobile_auth_transactions
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.mobile_auth_transactions
        SET status = 'code_issued', one_time_token_hmac = $4,
            code_expires_at = LEAST(expires_at, now() + interval '1 minute'),
            version = version + 1, updated_at = now()
        WHERE id = $1 AND application_id = $2 AND version = $3
          AND status = 'browser_verified' AND expires_at > now()
        RETURNING version`,
-      [input.id, input.applicationId, input.version, input.oneTimeTokenHmac],
-    ));
+        [input.id, input.applicationId, input.version, input.oneTimeTokenHmac],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -98,15 +120,17 @@ export class MobileTransactionStore {
     version: number;
     oneTimeTokenHmac: string;
   }): Promise<number | null> {
-    const rows = mutationRows<{ version: number }>(await this.database.getDataSource().query(
-      `UPDATE identity.mobile_auth_transactions
+    const rows = mutationRows<{ version: number }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.mobile_auth_transactions
        SET status = 'exchanging', version = version + 1, updated_at = now()
        WHERE id = $1 AND application_id = $2 AND version = $3
          AND status = 'code_issued' AND one_time_token_hmac = $4
          AND expires_at > now() AND code_expires_at > now()
        RETURNING version`,
-      [input.id, input.applicationId, input.version, input.oneTimeTokenHmac],
-    ));
+        [input.id, input.applicationId, input.version, input.oneTimeTokenHmac],
+      ),
+    );
     return rows[0]?.version ?? null;
   }
 
@@ -117,16 +141,18 @@ export class MobileTransactionStore {
     version: number;
     result: 'completed' | 'failed';
   }): Promise<boolean> {
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `UPDATE identity.mobile_auth_transactions
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.mobile_auth_transactions
        SET status = $4, client_state_ciphertext = NULL, client_state_iv = NULL,
            client_state_tag = NULL, client_state_key_id = NULL,
            browser_binding_hmac = NULL, version = version + 1, updated_at = now()
        WHERE id = $1 AND application_id = $2 AND version = $3
          AND status = 'exchanging' AND expires_at > now()
        RETURNING id`,
-      [input.id, input.applicationId, input.version, input.result],
-    ));
+        [input.id, input.applicationId, input.version, input.result],
+      ),
+    );
     return rows.length === 1;
   }
 
@@ -134,8 +160,9 @@ export class MobileTransactionStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       throw new Error('Invalid mobile expiry batch size');
     }
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `WITH due AS (
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `WITH due AS (
          SELECT id FROM identity.mobile_auth_transactions
          WHERE status NOT IN ('completed', 'failed', 'expired') AND expires_at <= now()
          ORDER BY expires_at FOR UPDATE SKIP LOCKED LIMIT $1
@@ -146,8 +173,9 @@ export class MobileTransactionStore {
            client_state_key_id = NULL, browser_binding_hmac = NULL,
            version = version + 1, updated_at = now()
        FROM due WHERE t.id = due.id RETURNING t.id`,
-      [limit],
-    ));
+        [limit],
+      ),
+    );
     return rows.length;
   }
 }

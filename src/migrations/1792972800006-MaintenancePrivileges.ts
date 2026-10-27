@@ -16,7 +16,9 @@ export class MaintenancePrivileges1792972800006 implements MigrationInterface {
     `);
   }
 
-  async down(): Promise<void> {
-    throw new Error('Use a reviewed forward migration for retention privileges');
+  down(): Promise<void> {
+    return Promise.reject(
+      new Error('Use a reviewed forward migration for retention privileges'),
+    );
   }
 }

@@ -13,7 +13,12 @@ export interface SealedDelivery {
 export interface DeliveryJobInput {
   /** Generate this UUIDv7 before sealing; bind it into the payload's AAD. */
   id: string;
-  purpose: 'verify_email' | 'reset_password' | 'magic_link' | 'email_otp' | 'security_notice';
+  purpose:
+    | 'verify_email'
+    | 'reset_password'
+    | 'magic_link'
+    | 'email_otp'
+    | 'security_notice';
   templateVersion: string;
   applicationId: string;
   sealed: SealedDelivery;
@@ -44,16 +49,22 @@ export class DeliveryQueueStore {
   constructor(private readonly database: DatabaseService) {}
 
   async enqueueSealed(input: DeliveryJobInput): Promise<string> {
-    if (!isUuid(input.id) || uuidVersion(input.id) !== 7 ||
-        input.sealed.iv.length !== 12 || input.sealed.tag.length !== 16 ||
-        input.sealed.ciphertext.length === 0 || !input.sealed.keyId ||
-        !input.deduplicationHmac || !input.messageId ||
-        input.challengeExpiresAt.getTime() <= Date.now() + 30_000 ||
-        input.notBefore.getTime() > input.challengeExpiresAt.getTime()) {
+    if (
+      !isUuid(input.id) ||
+      uuidVersion(input.id) !== 7 ||
+      input.sealed.iv.length !== 12 ||
+      input.sealed.tag.length !== 16 ||
+      input.sealed.ciphertext.length === 0 ||
+      !input.sealed.keyId ||
+      !input.deduplicationHmac ||
+      !input.messageId ||
+      input.challengeExpiresAt.getTime() <= Date.now() + 30_000 ||
+      input.notBefore.getTime() > input.challengeExpiresAt.getTime()
+    ) {
       throw new Error('Invalid sealed delivery');
     }
     const source = this.database.getDataSource();
-    const inserted = (await source.query(
+    const inserted = await source.query<{ id: string }[]>(
       `INSERT INTO identity.email_deliveries (
         id, purpose, template_version, application_id,
         payload_ciphertext, payload_iv, payload_tag, payload_key_id,
@@ -61,33 +72,50 @@ export class DeliveryQueueStore {
         next_attempt_at
       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)
       ON CONFLICT (deduplication_hmac) DO NOTHING RETURNING id`,
-      [input.id, input.purpose, input.templateVersion, input.applicationId,
-        input.sealed.ciphertext, input.sealed.iv, input.sealed.tag,
-        input.sealed.keyId, input.deduplicationHmac, input.messageId,
-        input.challengeExpiresAt, input.notBefore],
-    )) as { id: string }[];
+      [
+        input.id,
+        input.purpose,
+        input.templateVersion,
+        input.applicationId,
+        input.sealed.ciphertext,
+        input.sealed.iv,
+        input.sealed.tag,
+        input.sealed.keyId,
+        input.deduplicationHmac,
+        input.messageId,
+        input.challengeExpiresAt,
+        input.notBefore,
+      ],
+    );
     if (inserted[0]) return inserted[0].id;
-    const existing = (await source.query(
+    const existing = await source.query<
+      Array<{
+        id: string;
+        purpose: DeliveryJobInput['purpose'];
+        template_version: string;
+        application_id: string;
+        message_id: string;
+        challenge_expires_at: Date;
+        not_before: Date;
+      }>
+    >(
       `SELECT id, purpose, template_version, application_id, message_id,
               challenge_expires_at, not_before
        FROM identity.email_deliveries WHERE deduplication_hmac = $1`,
       [input.deduplicationHmac],
-    )) as Array<{
-      id: string;
-      purpose: DeliveryJobInput['purpose'];
-      template_version: string;
-      application_id: string;
-      message_id: string;
-      challenge_expires_at: Date;
-      not_before: Date;
-    }>;
+    );
     const prior = existing[0];
-    if (!prior || prior.id !== input.id || prior.purpose !== input.purpose ||
-        prior.template_version !== input.templateVersion ||
-        prior.application_id !== input.applicationId ||
-        prior.message_id !== input.messageId ||
-        prior.challenge_expires_at.getTime() !== input.challengeExpiresAt.getTime() ||
-        prior.not_before.getTime() !== input.notBefore.getTime()) {
+    if (
+      !prior ||
+      prior.id !== input.id ||
+      prior.purpose !== input.purpose ||
+      prior.template_version !== input.templateVersion ||
+      prior.application_id !== input.applicationId ||
+      prior.message_id !== input.messageId ||
+      prior.challenge_expires_at.getTime() !==
+        input.challengeExpiresAt.getTime() ||
+      prior.not_before.getTime() !== input.notBefore.getTime()
+    ) {
       throw new Error('Delivery deduplication conflict');
     }
     return prior.id;
@@ -98,8 +126,9 @@ export class DeliveryQueueStore {
     if (!/^[A-Za-z0-9_-]{16,128}$/.test(ownerToken)) {
       throw new Error('Invalid delivery lease owner');
     }
-    const rows = mutationRows<LeasedDelivery>(await this.database.getDataSource().query(
-      `WITH candidate AS (
+    const rows = mutationRows<LeasedDelivery>(
+      await this.database.getDataSource().query(
+        `WITH candidate AS (
          SELECT id FROM identity.email_deliveries
          WHERE state IN ('queued', 'retry_wait') AND next_attempt_at <= now()
            AND challenge_expires_at > now() + interval '30 seconds'
@@ -115,8 +144,9 @@ export class DeliveryQueueStore {
        RETURNING d.id, d.purpose, d.application_id, d.payload_ciphertext,
          d.payload_iv, d.payload_tag, d.payload_key_id, d.message_id,
          d.challenge_expires_at, d.attempt_count, d.lease_until, d.version`,
-      [ownerToken],
-    ));
+        [ownerToken],
+      ),
+    );
     return rows[0] ?? null;
   }
 
@@ -129,8 +159,9 @@ export class DeliveryQueueStore {
     errorCode?: string;
     smtpClass?: string;
   }): Promise<boolean> {
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `UPDATE identity.email_deliveries
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.email_deliveries
        SET state = $4, payload_ciphertext = NULL, payload_iv = NULL,
            payload_tag = NULL, payload_key_id = NULL,
            lease_owner = NULL, lease_until = NULL,
@@ -140,9 +171,16 @@ export class DeliveryQueueStore {
        WHERE id = $1 AND lease_owner = $2 AND version = $3
          AND state = 'leased' AND lease_until > now()
        RETURNING id`,
-      [input.id, input.ownerToken, input.version, input.outcome,
-        input.errorCode ?? null, input.smtpClass ?? null],
-    ));
+        [
+          input.id,
+          input.ownerToken,
+          input.version,
+          input.outcome,
+          input.errorCode ?? null,
+          input.smtpClass ?? null,
+        ],
+      ),
+    );
     return rows.length === 1;
   }
 
@@ -154,8 +192,9 @@ export class DeliveryQueueStore {
     errorCode: string;
     smtpClass?: string;
   }): Promise<boolean> {
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `UPDATE identity.email_deliveries
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `UPDATE identity.email_deliveries
        SET state = 'retry_wait', lease_owner = NULL, lease_until = NULL,
            next_attempt_at = now() + CASE attempt_count
              WHEN 1 THEN interval '15 seconds'
@@ -169,9 +208,15 @@ export class DeliveryQueueStore {
            CASE attempt_count WHEN 1 THEN interval '15 seconds'
              WHEN 2 THEN interval '60 seconds' WHEN 3 THEN interval '180 seconds' END
        RETURNING id`,
-      [input.id, input.ownerToken, input.version, input.errorCode,
-        input.smtpClass ?? null],
-    ));
+        [
+          input.id,
+          input.ownerToken,
+          input.version,
+          input.errorCode,
+          input.smtpClass ?? null,
+        ],
+      ),
+    );
     return rows.length === 1;
   }
 
@@ -180,8 +225,9 @@ export class DeliveryQueueStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       throw new Error('Invalid delivery expiry batch size');
     }
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `WITH due AS (
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `WITH due AS (
          SELECT id FROM identity.email_deliveries
          WHERE state IN ('queued', 'retry_wait')
            AND challenge_expires_at <= now() + interval '30 seconds'
@@ -192,8 +238,9 @@ export class DeliveryQueueStore {
            payload_tag = NULL, payload_key_id = NULL, terminal_at = now(),
            version = version + 1, updated_at = now()
        FROM due WHERE d.id = due.id RETURNING d.id`,
-      [limit],
-    ));
+        [limit],
+      ),
+    );
     return rows.length;
   }
 
@@ -202,8 +249,9 @@ export class DeliveryQueueStore {
     if (!Number.isInteger(limit) || limit < 1 || limit > 1000) {
       throw new Error('Invalid delivery recovery batch size');
     }
-    const rows = mutationRows<{ id: string }>(await this.database.getDataSource().query(
-      `WITH due AS (
+    const rows = mutationRows<{ id: string }>(
+      await this.database.getDataSource().query(
+        `WITH due AS (
          SELECT id FROM identity.email_deliveries
          WHERE state = 'leased' AND lease_until <= now()
          ORDER BY lease_until FOR UPDATE SKIP LOCKED LIMIT $1
@@ -241,8 +289,9 @@ export class DeliveryQueueStore {
            last_error_code = 'LEASE_EXPIRED',
            version = d.version + 1, updated_at = now()
        FROM classified c WHERE d.id = c.id RETURNING d.id`,
-      [limit],
-    ));
+        [limit],
+      ),
+    );
     return rows.length;
   }
 }

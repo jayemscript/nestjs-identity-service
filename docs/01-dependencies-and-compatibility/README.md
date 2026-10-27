@@ -56,7 +56,7 @@ Versions above are research observations, not a promise of future availability o
 - Better Auth's PostgreSQL path accepts `pg.Pool`. It does not require a TypeORM adapter. Pools have separate connection budgets and transactions.
 - Web and native iOS/Android authentication are first-release requirements. The bundled `bearer` and `oneTimeToken` plugins provide native session transport; no Expo-only integration, OAuth token issuer, mobile client secret, JWT session, or refresh-token pair is required. Primary authentication and enrolled MFA complete in a hosted system browser before the [mobile handoff](../14-mobile-authentication/README.md).
 - For the pinned release, configure `bearer({ requireSignature: true })` and `oneTimeToken({ disableClientRequest: true, storeToken: 'hashed', expiresIn: 1, disableSetSessionCookie: false, setOttHeaderOnNewSession: false })`. One-time-token expiry is in minutes. Native generate/verify operations are server API calls behind the gateway, never directly exposed HTTP endpoints. Validate the signed bearer returned by native verification through typed `auth.api.getSession` using the bearer plugin; do not read `auth.session` by token or treat a signature as sufficient authorization.
-- Session 1 verified the shell through focused tests and direct startup. Session 2 verified migrations, database connections, and persistence stores against local PostgreSQL; the native handler and external-provider behavior remain unverified. The local Node version is below the declared 24.22.1 target, and no Session 2 lint or build check was run.
+- Session 1 verified the shell through focused tests and direct startup. Session 2 verified migrations, database connections, persistence stores, lint, a production-code build, compiled migration listing, and compiled startup against local PostgreSQL. The native handler and external-provider behavior remain unverified. Local Node 24.19.0 is below the declared 24.22.1 target.
 
 ## Dependencies and prerequisites
 
@@ -83,7 +83,7 @@ Retain Better Auth's password hashing contract initially; bcrypt and argon2 are 
 1. Session 1: pin Node 24.22.1 and pnpm 11.25.0; update the container tag, ESM package/imports, Jest ESM transforms, and non-fixing Makefile verification commands. Remove unused direct packages after import audit.
 2. Session 1: keep the database module dormant; verify the shell through targeted tests, lint, and direct startup. Do not claim compiled production compatibility because no build check is authorized.
 3. Session 2 completed: review matched Better Auth/plugin/CLI metadata and lifecycle scripts, pin 1.7.12, and generate the full native schema from that configuration.
-4. Session 2 completed the ESM TypeORM CLI/Makefile path against local PostgreSQL. The compiled-JS deployment migration job remains to be verified in a deployment environment.
+4. Session 2 completed the ESM TypeORM CLI/Makefile path and locally verified the compiled-JS migration listing. Running compiled migrations in the deployment environment remains a later operations check.
 5. Native-handler session: install the bridge, confirm asynchronous provider initialization, and collect actual middleware/route compatibility evidence before enabling auth endpoints.
 
 ## Acceptance criteria
